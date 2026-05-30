@@ -1,0 +1,167 @@
+{
+  "identity": {
+    "name": "Hi Again",
+    "persona": "E1 - The Romantic Realist",
+    "vibe": "Sunset Noir",
+    "core_values": [
+      "Serendipity over Algorithms",
+      "Warmth in the Digital Void",
+      "Mystery with Safety",
+      "Hopeful Melancholy"
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "heading": ["Fraunces", "Playfair Display", "serif"],
+      "body": ["Manrope", "sans-serif"],
+      "mono": ["JetBrains Mono", "monospace"]
+    },
+    "weights": {
+      "heading": "300 (Light) to 600 (SemiBold) - Avoid heavy bolds for elegance",
+      "body": "400 (Regular) and 500 (Medium)"
+    },
+    "usage": {
+      "h1": "text-5xl md:text-7xl font-heading font-light tracking-tight leading-[1.1]",
+      "h2": "text-3xl md:text-5xl font-heading font-light tracking-tight",
+      "h3": "text-2xl md:text-3xl font-heading font-normal",
+      "body_large": "text-lg md:text-xl font-body leading-relaxed text-muted-foreground",
+      "body_default": "text-base font-body leading-relaxed text-muted-foreground",
+      "caption": "text-sm font-body tracking-wide uppercase text-muted-foreground/70"
+    }
+  },
+  "colors": {
+    "palette_name": "Sunset Noir",
+    "mode": "dark",
+    "base": {
+      "background": "#020617",
+      "foreground": "#FFF1F2",
+      "card": "#0F172A",
+      "card_foreground": "#FFF1F2"
+    },
+    "brand": {
+      "primary": "#F43F5E",
+      "primary_foreground": "#FFFFFF",
+      "secondary": "#FB923C",
+      "secondary_foreground": "#020617",
+      "accent": "#E11D48",
+      "accent_foreground": "#FFFFFF"
+    },
+    "gradients": {
+      "sunset_main": "bg-gradient-to-r from-rose-500 via-orange-400 to-amber-300",
+      "sunset_text": "bg-clip-text text-transparent bg-gradient-to-r from-rose-400 via-orange-300 to-amber-200",
+      "dusk_overlay": "bg-gradient-to-b from-slate-950/0 via-slate-950/80 to-slate-950"
+    },
+    "functional": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "info": "#3B82F6"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": {
+      "default": "backdrop-blur-xl bg-slate-900/60 border border-white/10 shadow-2xl",
+      "rose_glass": "backdrop-blur-xl bg-rose-950/30 border border-rose-500/20 shadow-[0_8px_32px_rgba(244,63,94,0.15)]",
+      "amber_glass": "backdrop-blur-md bg-amber-950/30 border border-amber-500/20"
+    },
+    "shadows": {
+      "glow_rose": "0 0 40px -10px rgba(244, 63, 94, 0.4)",
+      "glow_orange": "0 0 40px -10px rgba(251, 146, 60, 0.4)"
+    },
+    "borders": {
+      "subtle": "border border-white/5",
+      "highlight": "border border-rose-500/30"
+    }
+  },
+  "layout_strategies": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "spacing": {
+      "section_gap": "py-24 md:py-32",
+      "element_gap": "gap-6 md:gap-8"
+    },
+    "grids": {
+      "bento_profile": "grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6",
+      "feed": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 text-white rounded-full px-8 py-3 font-medium transition-all duration-300 shadow-lg hover:shadow-rose-500/25 hover:-translate-y-0.5",
+      "secondary": "bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-full px-8 py-3 font-medium transition-all duration-300 backdrop-blur-sm",
+      "ghost": "text-rose-300 hover:text-rose-200 hover:bg-rose-500/10 rounded-lg px-4 py-2 transition-colors"
+    },
+    "cards": {
+      "profile": "group relative overflow-hidden rounded-3xl bg-slate-900/50 border border-white/5 hover:border-rose-500/30 transition-all duration-500",
+      "connection": "rounded-2xl bg-slate-800/50 border border-white/5 p-6 hover:bg-slate-800/80 transition-colors"
+    },
+    "inputs": {
+      "default": "bg-slate-950/50 border-slate-800 focus:border-rose-500 focus:ring-rose-500/20 rounded-xl h-12 px-4 text-white placeholder:text-slate-500 transition-all"
+    }
+  },
+  "image_urls": {
+    "hero_backgrounds": [
+      {
+        "url": "https://images.unsplash.com/photo-1724216605131-c8b0d4974458?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Couple walking at sunset - Use for Hero Section background with heavy dark overlay",
+        "category": "hero"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1757822757693-0efda118e1ed?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Couple watching city skyline sunset - Alternative Hero",
+        "category": "hero"
+      }
+    ],
+    "atmosphere": [
+      {
+        "url": "https://images.unsplash.com/photo-1616956407387-c876fcc8da85?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Coffee shop window reflection - Use for 'Missed Connections' feature section",
+        "category": "feature"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1723138569088-d3ee6beae803?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Aerial city sunset - Use for Location History/Map section background",
+        "category": "feature"
+      }
+    ],
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1683921902999-d52fa6d6ec54?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Redhead woman smiling - Profile placeholder",
+        "category": "avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1658909835269-e76abd3ffb5d?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Man on phone smiling - Profile placeholder",
+        "category": "avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1533030861215-66387403772f?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Woman taking photo - Profile placeholder",
+        "category": "avatar"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "1. UPDATE TAILWIND CONFIG: Replace the 'midnight' and 'amber' palette with the 'Sunset Noir' palette defined in 'colors'. Add 'Fraunces' to font family.",
+    "2. INSTALL FONTS: Add '@fontsource/fraunces' and '@fontsource/manrope' or import from Google Fonts in index.css.",
+    "3. GLASSMORPHISM: Update the '.glass' utility in index.css to use the 'rose_glass' values defined in 'visual_enhancers'.",
+    "4. GRADIENTS: Use 'bg-gradient-to-r from-rose-500 via-orange-400 to-amber-300' for primary actions and key visual elements.",
+    "5. MAPS: If using a map library (Leaflet/Mapbox), ensure it uses a dark custom style to match the slate-950 background.",
+    "6. IMAGES: Use the provided Unsplash URLs. Do not use placeholders.",
+    "7. ANIMATION: Use 'framer-motion' for page transitions and 'staggerChildren' for lists. Key animation: 'Fade Up' with a slight rotation for cards."
+  ],
+  "universal_guidelines": {
+    "do_not": [
+      "Do not use pure black (#000000). Use Slate-950 (#020617).",
+      "Do not use default blue for links. Use Rose-400 or Orange-400.",
+      "Do not make the UI flat. Use subtle borders (white/5) and shadows to create depth.",
+      "Do not use 'Inter' for headings. Use 'Fraunces'."
+    ],
+    "must_do": [
+      "Ensure all text has sufficient contrast against the dark background.",
+      "Use 'backdrop-blur' heavily to create the 'frosted glass' look.",
+      "Add 'data-testid' to all interactive elements.",
+      "Use 'sonner' for toast notifications."
+    ]
+  }
+}

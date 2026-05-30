@@ -1,0 +1,30 @@
+{
+  "_comment": "PLACEHOLDER for GitHub push. Real google-services.json is set via GitHub Actions secret GOOGLE_SERVICES_JSON, which the build-android.yml workflow restores at build time. The api_key here is a Firebase ANDROID key (safe to commit per Google docs) but Emergent's secret scanner blocks any AIza* string — hence the placeholder.",
+  "project_info": {
+    "project_number": "REPLACE_AT_BUILD_TIME",
+    "project_id": "hiagain-54522",
+    "storage_bucket": "hiagain-54522.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:REPLACE:android:REPLACE",
+        "android_client_info": {
+          "package_name": "com.crowdspulse.hiagain"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "REPLACE_AT_BUILD_TIME"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

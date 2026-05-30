@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hi Again</string>
+    <string name="title_activity_main">Hi Again</string>
+    <string name="package_name">com.crowdspulse.hiagain</string>
+    <string name="custom_url_scheme">com.crowdspulse.hiagain</string>
+
+    <!-- @capacitor-community/background-geolocation notification customisation.
+         Shown in the system tray while background tracking is active. -->
+    <string name="capacitor_background_geolocation_notification_channel_name">
+        Hi Again location tracking
+    </string>
+    <string name="capacitor_background_geolocation_notification_color">#F97316</string>
+</resources>

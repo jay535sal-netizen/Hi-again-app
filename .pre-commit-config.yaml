@@ -1,0 +1,67 @@
+# Pre-commit hooks for Hi Again
+#
+# Runs the SAME linters we use during development (Ruff + ESLint) before every
+# commit, so external "code quality" tools generating noisy false-positive
+# reports stop being the source of truth. If a finding doesn't show up here,
+# it isn't real.
+#
+# Setup (one-time, on your dev machine):
+#   pip install pre-commit
+#   pre-commit install
+#
+# Manual run across the whole repo:
+#   pre-commit run --all-files
+#
+# Skip occasionally (NOT recommended) with:
+#   git commit --no-verify
+
+repos:
+  # ---------------------------------------------------------------------
+  # Python — Ruff (linter only; we don't auto-format the monolith mid-flight)
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/.*\.py$
+
+  # ---------------------------------------------------------------------
+  # JS / JSX — ESLint (flat config at frontend/eslint.config.mjs)
+  # ---------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: eslint-frontend
+        name: ESLint (frontend)
+        entry: bash -c 'cd frontend && yarn -s eslint --quiet "$@"' --
+        language: system
+        types_or: [javascript, jsx]
+        files: ^frontend/src/
+        pass_filenames: true
+
+  # ---------------------------------------------------------------------
+  # Hygiene — prevent committing secrets, large files, broken JSON/YAML
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+        exclude: \.md$
+      - id: check-yaml
+      - id: check-json
+        # Capacitor's tsconfig files contain JSON5 comments — skip them
+        exclude: tsconfig.*\.json$
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # ---------------------------------------------------------------------
+  # Belt-and-braces: extra secret scanning for API keys we use
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

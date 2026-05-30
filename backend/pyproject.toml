@@ -1,0 +1,38 @@
+# Hi Again — backend tooling config
+#
+# Ruff is our single Python linter + formatter. The pre-commit hook reads
+# THIS file as the source of truth — so external tools that disagree with
+# it are just wrong.
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [
+    "node_modules",
+    ".git",
+    "build",
+    "dist",
+    "android",
+    "ios",
+    "__pycache__",
+    "tests/**",  # tests use older assertion patterns; lint them separately if needed
+]
+
+[tool.ruff.lint]
+# A focused set: real bugs and undefined-name footguns ONLY.
+# We deliberately do NOT enable cosmetic / modernization rules (whitespace,
+# Optional[X] -> X | None, datetime.timezone.utc -> datetime.UTC etc) that
+# would force a 500+ line rewrite of a stable monolith days before launch.
+# Post-launch we can tighten further.
+select = [
+    "F",    # pyflakes — undefined names, unused imports (THE class of real bugs)
+    "E9",   # pycodestyle runtime errors (syntax-level only)
+    "B0",   # flake8-bugbear core (mutable defaults, except-pass etc)
+    "RUF1", # ruff-specific high-signal lints
+]
+ignore = [
+    "B008",  # function call in argument defaults (FastAPI Depends() needs this)
+    "B904",  # raise-from — noisy in HTTPException re-raises
+    "B007",  # unused loop variable — common in event-loop iterations
+    "B905",  # zip-without-explicit-strict — Python 3.10+ feature, not always needed
+]

@@ -1,0 +1,25 @@
+{
+  "appId": "com.crowdspulse.hiagain",
+  "appName": "Hi Again",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https",
+    "url": "https://hiagain.xyz",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0A0F1C",
+    "useLegacyBridge": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#0A0F1C",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
+    }
+  }
+}
