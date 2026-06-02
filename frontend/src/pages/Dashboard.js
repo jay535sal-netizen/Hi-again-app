@@ -7,7 +7,7 @@ import ShareInvite from '../components/ShareInvite';
 import PrivateCircle from '../components/PrivateCircle';
 import SuggestedCrossings from '../components/SuggestedCrossings';
 import GPSTracker from '../components/GPSTracker';
-import BluetoothTracker from '../components/BluetoothTracker';
+import BluetoothTracker from '../components/BluetoothTracker'; // eslint-disable-line no-unused-vars
 import OnboardingModal from '../components/OnboardingModal';
 import EmailVerificationBanner from '../components/EmailVerificationBanner';
 import MissedConnectionModal from '../components/MissedConnectionModal';
@@ -364,15 +364,16 @@ export default function Dashboard() {
                             }}
                         />
 
-                        {/* Bluetooth Proximity Tracker */}
+                        {/* Bluetooth Proximity Tracker — deferred to v1.1 (BLE plugin requires Capacitor 6) */}
+                        {false && (
                         <BluetoothTracker 
                             userId={user?.id}
-                            onEncounterFound={(count) => {
-                                loadData(); // Refresh dashboard data when encounters found
+                            onEncounterFound={(_count) => {
+                                loadData();
                             }}
                             compact={true}
                         />
-
+                        )}
                         {/* Missed Connection Promo */}
                         <div className="glass-rose rounded-2xl p-6">
                             <div className="flex items-center gap-3 mb-4">
