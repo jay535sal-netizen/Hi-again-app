@@ -23,6 +23,7 @@ import Achievements from "./pages/Achievements";
 import Gatherings from "./pages/Gatherings";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import DeleteAccount from "./pages/DeleteAccount";
 import Discover from "./pages/Discover";
 import { Loader2 } from "lucide-react";
 
@@ -266,6 +267,19 @@ function AppRoutes() {
                         <Terms />
                     </>
                 }
+            />
+            <Route
+                path="/delete-account"
+                element={
+                    <>
+                        <Navbar />
+                        <DeleteAccount />
+                    </>
+                }
+            />
+            <Route
+                path="/data-deletion"
+                element={<Navigate to="/delete-account" replace />}
             />
 
             {/* User Profile Page */}
