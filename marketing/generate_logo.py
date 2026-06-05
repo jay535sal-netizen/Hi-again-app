@@ -16,14 +16,18 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 OUT = "/app/marketing/play_assets"
 os.makedirs(OUT, exist_ok=True)
 
-# --- Brand palette (Sunset Noir) ---
-PIN_TOP = (255, 107, 53)       # warm sunset orange
-PIN_BOTTOM = (228, 60, 78)     # deep rose-red
-PIN_OUTLINE = (255, 255, 255)  # white outline
+# --- Brand palette (matching the polished Lumii references) ---
+PIN_TOP = (235, 75, 95)        # rose-red top
+PIN_BOTTOM = (213, 45, 65)     # deeper rose-red bottom
+PIN_OUTLINE = (255, 255, 255)
 WHITE = (255, 255, 255)
-ACCENT_BLUE = (76, 168, 230)   # the same friendly blue from the sketch
-NAVY = (11, 18, 32)            # for feature graphic background
-CREAM = (255, 248, 235)        # warm light background
+ACCENT_BLUE = (76, 130, 230)   # blue cursive accent
+NAVY = (11, 18, 32)
+CREAM = (236, 232, 226)        # cool warm-gray bg matching reference
+
+PACIFICO = "/app/marketing/fonts/Pacifico-Regular.ttf"
+DANCING = "/app/marketing/fonts/DancingScript.ttf"
+CAVEAT = "/app/marketing/fonts/Caveat.ttf"
 
 
 def get_font(name_candidates, size):
@@ -120,35 +124,33 @@ def build_icon(size=1024):
     canvas = Image.alpha_composite(canvas, shadow)
     canvas = Image.alpha_composite(canvas, pin_layer)
 
-    # --- Text: big white "Hi" inside the circle head ---
+    # --- Text: huge cursive white "Hi" overflowing the circle head ---
     draw = ImageDraw.Draw(canvas)
-    hi_font = get_font([], int(size * 0.42))
+    hi_font = get_font([PACIFICO], int(size * 0.62))
     text = "Hi"
     bbox = draw.textbbox((0, 0), text, font=hi_font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    tx = cx - tw // 2 - bbox[0]
-    ty = cy - th // 2 - bbox[1] - int(size * 0.02)
-    draw.text((tx, ty), text, fill=WHITE, font=hi_font)
+    tx = cx - tw // 2 - bbox[0] - int(size * 0.02)
+    ty = cy - th // 2 - bbox[1]
 
-    # --- Cursive "Again" tucked upper-right ---
-    again_font = get_font(
-        ["/usr/share/fonts/truetype/freefont/FreeSerifBoldItalic.ttf"],
-        int(size * 0.11),
-    )
-    again_text = "Again"
-    abbox = draw.textbbox((0, 0), again_text, font=again_font)
-    aw, ah = abbox[2] - abbox[0], abbox[3] - abbox[1]
-    ax = cx + int(head_radius * 0.55) - aw // 2
-    ay = cy - int(head_radius * 0.85)
-
-    # Soft white halo behind "Again" so it reads on the orange.
-    halo = Image.new("RGBA", (aw + 80, ah + 80), (0, 0, 0, 0))
-    hdraw = ImageDraw.Draw(halo)
-    hdraw.ellipse((0, 0, aw + 80, ah + 80), fill=(255, 255, 255, 200))
-    halo = halo.filter(ImageFilter.GaussianBlur(radius=12))
-    canvas.alpha_composite(halo, (ax - 40, ay - 40))
+    # Soft drop shadow on "Hi" for a hand-stickered feel
+    shadow_text = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    stxt = ImageDraw.Draw(shadow_text)
+    stxt.text((tx + int(size * 0.012), ty + int(size * 0.012)), text,
+              fill=(0, 0, 0, 90), font=hi_font)
+    shadow_text = shadow_text.filter(ImageFilter.GaussianBlur(radius=size * 0.012))
+    canvas.alpha_composite(shadow_text)
 
     draw = ImageDraw.Draw(canvas)
+    draw.text((tx, ty), text, fill=WHITE, font=hi_font)
+
+    # --- "again" in blue cursive, lowercase, tucked top-right ---
+    again_font = get_font([DANCING, CAVEAT], int(size * 0.14))
+    again_text = "again"
+    abbox = draw.textbbox((0, 0), again_text, font=again_font)
+    aw, ah = abbox[2] - abbox[0], abbox[3] - abbox[1]
+    ax = cx + int(head_radius * 0.30)
+    ay = cy - int(head_radius * 0.70)
     draw.text((ax, ay), again_text, fill=ACCENT_BLUE, font=again_font)
 
     return canvas
