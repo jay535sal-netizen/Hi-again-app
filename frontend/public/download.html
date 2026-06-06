@@ -1,40 +1,71 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>Download Hi Again Assets</title>
 <style>
-  body { background:#0f1220; color:#fff; font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:40px; max-width:820px; margin:0 auto; text-align:center; }
-  h1 { font-size:30px; margin-bottom:10px; }
-  p { color:#aaa; margin:6px 0 30px; }
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
-  .card { background:#1a1d2b; padding:20px; border-radius:18px; }
-  .card img { width:100%; height:auto; border-radius:14px; display:block; box-shadow:0 8px 24px rgba(0,0,0,.5); }
-  .card .label { margin-top:14px; font-weight:600; font-size:16px; }
-  .card .sub { color:#888; font-size:13px; margin-top:4px; }
-  a.btn { display:inline-block; background:linear-gradient(135deg,#ff7c4a,#dc4060); color:#fff; text-decoration:none; padding:14px 30px; border-radius:12px; font-size:15px; font-weight:600; margin-top:14px; box-shadow:0 6px 18px rgba(255,124,74,.35); }
+  body { background:#0f1220; color:#fff; font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:40px; max-width:1100px; margin:0 auto; }
+  h1 { font-size:32px; margin:0 0 8px; text-align:center; }
+  h2 { font-size:20px; margin:36px 0 16px; padding-bottom:8px; border-bottom:1px solid #2a2f45; }
+  p.lead { color:#aaa; margin:0 0 30px; text-align:center; }
+  .row { display:grid; gap:20px; }
+  .row.two { grid-template-columns:repeat(2, 1fr); }
+  .row.four { grid-template-columns:repeat(4, 1fr); }
+  .card { background:#1a1d2b; padding:18px; border-radius:16px; text-align:center; }
+  .card img { width:100%; height:auto; border-radius:10px; display:block; box-shadow:0 6px 20px rgba(0,0,0,.5); }
+  .card .label { margin-top:12px; font-weight:600; font-size:15px; }
+  .card .sub { color:#888; font-size:12px; margin-top:4px; }
+  a.btn { display:inline-block; background:linear-gradient(135deg,#ff7c4a,#dc4060); color:#fff; text-decoration:none; padding:10px 22px; border-radius:10px; font-size:13px; font-weight:600; margin-top:12px; box-shadow:0 4px 14px rgba(255,124,74,.35); }
   a.btn:hover { transform:translateY(-2px); }
-  .hint { font-size:13px; color:#777; margin-top:36px; line-height:1.6; }
-  code { background:#1a1d2b; padding:2px 8px; border-radius:4px; color:#ffb380; }
+  .hint { font-size:13px; color:#777; margin-top:36px; line-height:1.6; text-align:center; background:#171a26; padding:18px; border-radius:12px; }
 </style></head>
 <body>
-  <h1>Hi Again — Final Play Store Assets</h1>
-  <p>Right-click any image → Save image as… OR click the button below it.</p>
+  <h1>Hi Again — Play Store Assets</h1>
+  <p class="lead">Right-click any image → Save image as… OR click the orange button. Then upload to Play Console.</p>
 
-  <div class="row">
+  <h2>📱 App Icon + Feature Graphic</h2>
+  <div class="row two">
     <div class="card">
       <img src="/hi-again-final-512.png?v=1" alt="App icon">
-      <div class="label">App Icon</div>
-      <div class="sub">512×512 PNG · Play Console "App icon" field</div>
+      <div class="label">App Icon — 512×512</div>
+      <div class="sub">Play Console "App icon" field</div>
       <a class="btn" href="/hi-again-final-512.png?v=1" download="hi-again-icon-512.png">⬇️ Download</a>
     </div>
     <div class="card">
       <img src="/hi-again-feature-final.png?v=1" alt="Feature graphic">
-      <div class="label">Feature Graphic</div>
-      <div class="sub">1024×500 PNG · Play Console "Feature graphic" field</div>
+      <div class="label">Feature Graphic — 1024×500</div>
+      <div class="sub">Play Console "Feature graphic" field</div>
       <a class="btn" href="/hi-again-feature-final.png?v=1" download="hi-again-feature-graphic.png">⬇️ Download</a>
     </div>
   </div>
 
+  <h2>📸 Phone Screenshots (upload all 4)</h2>
+  <div class="row four">
+    <div class="card">
+      <img src="/screenshot_1_dashboard.png">
+      <div class="label">1. Dashboard</div>
+      <div class="sub">1080×1920</div>
+      <a class="btn" href="/screenshot_1_dashboard.png" download="hi-again-screenshot-1.png">⬇️ Download</a>
+    </div>
+    <div class="card">
+      <img src="/screenshot_2_discover.png">
+      <div class="label">2. Discover</div>
+      <div class="sub">1080×1920</div>
+      <a class="btn" href="/screenshot_2_discover.png" download="hi-again-screenshot-2.png">⬇️ Download</a>
+    </div>
+    <div class="card">
+      <img src="/screenshot_3_premium.png">
+      <div class="label">3. Premium</div>
+      <div class="sub">1080×1920</div>
+      <a class="btn" href="/screenshot_3_premium.png" download="hi-again-screenshot-3.png">⬇️ Download</a>
+    </div>
+    <div class="card">
+      <img src="/screenshot_4_profile.png">
+      <div class="label">4. Achievements</div>
+      <div class="sub">1080×1920</div>
+      <a class="btn" href="/screenshot_4_profile.png" download="hi-again-screenshot-4.png">⬇️ Download</a>
+    </div>
+  </div>
+
   <div class="hint">
-    Also keep this high-res 1024×1024 master for Instagram, Facebook, and your website:<br>
+    💎 Bonus — high-res 1024×1024 master icon for your website / Instagram / Facebook:<br>
     <a class="btn" href="/hi-again-final-1024.png?v=1" download="hi-again-icon-1024.png">⬇️ Download 1024×1024 Master</a>
   </div>
 </body></html>
