@@ -5393,6 +5393,9 @@ _DEFAULT_CORS_REGEX = (
     r"|https://(.*\.)?emergentagent\.com"
     r"|https://(.*\.)?emergent\.host"
     r"|http://localhost(:\d+)?"
+    r"|https://localhost(:\d+)?"
+    r"|capacitor://localhost"
+    r"|ionic://localhost"
 )
 _cors_regex = os.environ.get('CORS_ORIGIN_REGEX') or _DEFAULT_CORS_REGEX
 

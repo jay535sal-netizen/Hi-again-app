@@ -86,6 +86,28 @@
             </p>
         </a>
         <script>
+            // Hide the "Made with Emergent" badge when running inside the native
+            // Capacitor app — testers shouldn't see platform branding in their
+            // installed Android/iOS app. Detect Capacitor by the webview's
+            // origin (https://localhost / capacitor://localhost) or the
+            // Capacitor.isNativePlatform global once @capacitor/core loads.
+            (function () {
+                try {
+                    var origin = window.location.origin || '';
+                    var isNativeOrigin =
+                        origin.indexOf('capacitor://') === 0 ||
+                        origin === 'https://localhost' ||
+                        origin === 'http://localhost';
+                    if (isNativeOrigin) {
+                        var badge = document.getElementById('emergent-badge');
+                        if (badge) badge.style.display = 'none';
+                    }
+                } catch (e) {
+                    // Non-critical — never block app boot for badge cosmetics.
+                }
+            })();
+        </script>
+        <script>
             !(function (t, e) {
                 var o, n, p, r;
                 e.__SV ||

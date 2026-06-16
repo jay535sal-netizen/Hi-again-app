@@ -58,10 +58,12 @@ asyncio.run(main())
 - Production: https://hiagain.xyz
 
 ## Auth flow
-- JWT in **httpOnly cookie** named `hiagain_token`. NO localStorage tokens.
+- **Web**: JWT in **httpOnly cookie** named `hiagain_token`. NO localStorage tokens.
+- **Native (Capacitor Android/iOS app)**: cookies don't survive the cross-origin webview→hiagain.xyz hop, so the `access_token` is stored in localStorage under key `hiagain.native_token` and sent as `Authorization: Bearer <token>` header on every request. See `/app/frontend/src/lib/api.js` `setNativeToken()` / `getNativeToken()`.
 - Endpoints: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
 - Verification: `POST /api/auth/send-verification`, `POST /api/auth/verify-email`, `POST /api/auth/complete-onboarding`
 - `/auth/me` surfaces `ghost_mode`, `email_verified`, `onboarded` on the user response.
+- Backend `get_current_user()` checks httpOnly cookie FIRST, falls back to `Authorization: Bearer` header — supports both flows transparently.
 
 ## Auth resilience
 - 5-second post-login grace period in AuthContext (race-condition fix)

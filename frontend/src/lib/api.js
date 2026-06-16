@@ -1,12 +1,20 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
+
+const IS_NATIVE = Capacitor?.isNativePlatform?.() === true;
 
 // Smart backend URL: if the build-time REACT_APP_BACKEND_URL points to a different
 // origin than the page is actually being served from, fall back to same-origin
 // (empty prefix). This sidesteps cross-origin CORS+credentials conflicts that
 // happen when production deploys bake in the wrong backend URL.
+//
+// EXCEPTION: on native Capacitor (Android/iOS app), the webview origin is
+// `https://localhost` — same-origin fallback would point at nothing. Always
+// use the env URL on native.
 function resolveBackendUrl() {
     const envUrl = process.env.REACT_APP_BACKEND_URL || '';
     if (typeof window === 'undefined') return envUrl;
+    if (IS_NATIVE) return envUrl; // native app MUST use the real backend URL
     try {
         const pageOrigin = window.location.origin;
         if (!envUrl) return ''; // empty = same-origin
@@ -20,17 +28,48 @@ function resolveBackendUrl() {
 const BACKEND_URL = resolveBackendUrl();
 const API_URL = `${BACKEND_URL}/api`;
 
-// Create axios instance with credentials for httpOnly cookie support
+// Native-app token storage. httpOnly cookies don't survive cross-origin
+// webview→hiagain.xyz hops on Android, so on Capacitor we explicitly carry
+// the JWT in the Authorization header (the login endpoint already returns
+// `access_token` in the response body for exactly this reason).
+const TOKEN_KEY = 'hiagain.native_token';
+export function getNativeToken() {
+    if (!IS_NATIVE) return null;
+    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+export function setNativeToken(token) {
+    if (!IS_NATIVE) return;
+    try {
+        if (token) localStorage.setItem(TOKEN_KEY, token);
+        else localStorage.removeItem(TOKEN_KEY);
+    } catch {
+        // localStorage unavailable — non-critical
+    }
+}
+
+// Create axios instance with credentials for httpOnly cookie support (web).
 const api = axios.create({
     baseURL: API_URL,
     headers: {
         'Content-Type': 'application/json',
     },
-    withCredentials: true,  // Enable sending cookies with cross-origin requests
+    withCredentials: true,  // Enable sending cookies with cross-origin requests (web)
 });
 
-// Auth uses httpOnly cookies (sent automatically via withCredentials).
-// No JWT in localStorage anymore — prevents XSS token theft.
+// On native, attach Bearer token to every request.
+api.interceptors.request.use((config) => {
+    if (IS_NATIVE) {
+        const token = getNativeToken();
+        if (token) {
+            config.headers = config.headers || {};
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+    }
+    return config;
+});
+
+// Auth uses httpOnly cookies on web (sent via withCredentials).
+// On native, Authorization: Bearer header carries the token instead.
 
 // Handle 401 errors. We deliberately do NOT auto-redirect to /login here.
 // React Router's ProtectedRoute already redirects when user is null, and

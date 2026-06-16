@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { authApi } from '../lib/api';
+import { authApi, setNativeToken } from '../lib/api';
 import { initFirebase, clearFirebaseRegistration } from '../lib/firebase';
 
 const AuthContext = createContext(null);
@@ -60,9 +60,11 @@ export function AuthProvider({ children }) {
 
     const login = useCallback(async (email, password) => {
         const response = await authApi.login({ email, password });
-        const { user: userData } = response.data;
-        // Auth token is stored in httpOnly cookie set by the server.
-        // Only cache non-sensitive user profile in localStorage for fast initial paint.
+        const { user: userData, access_token } = response.data;
+        // Web: token is in an httpOnly cookie set by the server.
+        // Native (Capacitor): cookies don't survive the cross-origin webview hop,
+        // so we persist the access_token and send it as a Bearer header.
+        if (access_token) setNativeToken(access_token);
         lastLoginAt.current = Date.now();
         localStorage.setItem('user', JSON.stringify(userData));
         setUser(userData);
@@ -71,8 +73,8 @@ export function AuthProvider({ children }) {
 
     const register = useCallback(async (name, email, password) => {
         const response = await authApi.register({ name, email, password });
-        const { user: userData } = response.data;
-        // Auth token is stored in httpOnly cookie set by the server.
+        const { user: userData, access_token } = response.data;
+        if (access_token) setNativeToken(access_token);
         lastLoginAt.current = Date.now();
         localStorage.setItem('user', JSON.stringify(userData));
         setUser(userData);
@@ -91,7 +93,8 @@ export function AuthProvider({ children }) {
             // Continue with local cleanup even if server call fails
             console.warn('Logout request failed (continuing client-side cleanup):', err?.message || err);
         }
-        // Clear local storage
+        // Clear local storage + native token
+        setNativeToken(null);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         setUser(null);

@@ -199,7 +199,7 @@ export default function Register() {
                                     type="text"
                                     value={referralCode}
                                     onChange={handleReferralCodeChange}
-                                    placeholder="FRIEND123"
+                                    placeholder="FRIENDS2026"
                                     className={`input-dark uppercase font-mono ${referrerName ? 'border-emerald-500/50' : ''}`}
                                     data-testid="register-referral"
                                 />
