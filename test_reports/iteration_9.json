@@ -1,0 +1,81 @@
+{
+  "summary": "Full backend regression for Hi Again Play Store Internal Testing launch. 22/22 pytest cases pass against the preview deployment (REACT_APP_BACKEND_URL). All 9 endpoints from the review request work end-to-end. Production (https://hiagain.xyz) was additionally smoke-tested: /api/health, /api/auth/login (cookie + access_token), /api/auth/me, /privacy, and /delete-account all return 200. No ObjectId leaks detected across 6 read endpoints. Nothing is broken.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/premium/status",
+        "issue": "Route does not exist in server.py. The actual endpoint is GET /api/subscription/status (returns tier + subscription + usage). The PRD / review request refers to /api/premium/status — the mobile client / future docs should use /api/subscription/status. Optionally add a /api/premium/status alias for naming clarity."
+      },
+      {
+        "endpoint": "/api/gatherings",
+        "issue": "Pydantic response_model declares List[GatheringResponse] but the implementation actually returns a dict {my_gatherings: [...], upcoming: [...]}. FastAPI is letting it through because no Pydantic coercion is rejecting it, but the OpenAPI schema is misleading. Update the response_model or the return shape to match."
+      }
+    ]
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "POST /api/auth/login — 200, returns access_token + user; sets httpOnly hiagain_token cookie",
+    "POST /api/auth/login (wrong password) — 401",
+    "GET /api/auth/me with cookie — 200, returns id/email/onboarded/email_verified/ghost_mode",
+    "GET /api/auth/me unauthenticated — 401",
+    "GET /api/locations — 200, list",
+    "POST /api/locations — 200, returns id; created location echoed back; cleanup via DELETE works",
+    "GET /api/crossings — 200, list",
+    "GET /api/achievements — 200, dict with unlocked badges",
+    "GET /api/gatherings — 200, {my_gatherings, upcoming}",
+    "GET /api/subscription/status — 200, includes tier (free/premium) + usage counters",
+    "POST /api/push/register with 64-char dummy FCM token — 200 {ok:true, push_enabled:bool}",
+    "POST /api/push/register with too-short token — 400 (validation works)",
+    "Frontend /privacy, /terms, /delete-account, /data-deletion — all 200 text/html (React SPA shell)",
+    "ObjectId sweep on 6 read endpoints — no `_id` and no `$oid` leaks anywhere",
+    "Production smoke: /api/health 200, /api/auth/login 200 with cookie, /api/auth/me 200, /privacy 200, /delete-account 200 on https://hiagain.xyz"
+  ],
+
+  "test_report_links": [
+    "/app/backend/tests/test_play_store_regression.py",
+    "/app/test_reports/pytest/play_store_regression.xml"
+  ],
+
+  "action_items": [
+    "(Optional naming) Add a GET /api/premium/status alias that returns the same payload as /api/subscription/status, OR update PRD/docs to use /api/subscription/status. Current mobile bundle should call /api/subscription/status.",
+    "(Optional schema) Fix the response_model mismatch on GET /api/gatherings — either declare it as a dict response model or change the handler to return List[GatheringResponse]."
+  ],
+
+  "critical_code_review_comments": [
+    "server.py is now 5,409 lines — already flagged in iteration_8, still not split. Should be broken into routers (auth, locations, crossings, subscription, gatherings, push) before any major feature work.",
+    "GET /api/gatherings response_model annotation does not match the actual returned shape. This will silently mislead OpenAPI consumers / mobile SDK generators.",
+    "Naming inconsistency: PRD/mobile-facing name is `premium` (e.g. /api/premium/status referenced in the review), but the implementation uses `subscription` (/api/subscription/status, /api/subscription/plans, /api/subscription/checkout). Pick one and document it.",
+    "POST /api/push/register: token min-length validation is `< 20` chars — real FCM tokens are ~163 chars so 20 is fine, but consider a slightly stricter check (>=140) and explicit platform whitelist (android/ios/web) for hardening.",
+    "Login endpoint returns BOTH access_token in the JSON body AND sets the httpOnly cookie. test_credentials.md says 'NO localStorage tokens' — but the body access_token makes it easy for mobile to accidentally store it. Either drop the body token (cookie-only for web, separate /api/auth/mobile-login for the app) or keep this dual-mode but document it."
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_play_store_regression.py (new — 22 cases, ~280 LOC)"
+  ],
+
+  "success_rate": {
+    "backend": "100% (22/22 pytest cases on preview; production smoke 5/5)",
+    "frontend": "not tested (review explicitly scoped to backend only)"
+  },
+
+  "test_credentials": {
+    "owner": {"email": "hiagainxyz@gmail.com", "password": "HiAgain2024!"}
+  },
+
+  "seed_data_creation": "None — the one test location created in POST /api/locations is deleted in the same test (TEST_City_Seattle + TEST_Pike_Place_<uuid>). One test push token is registered + unregistered in the same test (TEST_FCM_<uuid>). No residual state.",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+
+  "context_for_next_testing_agent": "Re-run the suite with `cd /app && export $(grep -v '^#' frontend/.env | xargs) && python -m pytest backend/tests/test_play_store_regression.py -v`. Covers auth/login (cookie + body token), auth/me, locations CRUD subset, crossings, achievements, gatherings, subscription status (note: PRD calls it 'premium/status' but real route is 'subscription/status'), push register + unregister, public legal HTML pages, and a Mongo ObjectId leak sweep. Preview URL is the configured REACT_APP_BACKEND_URL; production https://hiagain.xyz is also live and was smoke-tested.",
+
+  "rca of the issue": "N/A — no bugs found. Two minor schema/naming inconsistencies flagged for cleanup."
+}
