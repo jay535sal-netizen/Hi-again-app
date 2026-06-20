@@ -558,6 +558,53 @@ def get_object(path: str) -> tuple:
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
+
+# ============================================================
+# Helper: upload a file to object storage AND register it in
+# `media_files` so it can be served via `GET /api/media/{id}`.
+# Returns the public URL (relative path) to embed in MongoDB.
+# Used by profile-photo, gallery, and posts upload endpoints.
+# ============================================================
+MIME_EXT = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/webm": "webm",
+}
+
+
+async def store_media_blob(
+    content: bytes,
+    content_type: str,
+    user_id: str,
+    media_kind: str,  # one of: "profile", "gallery", "post"
+) -> str:
+    """Upload `content` to object storage, register in `media_files`, return
+    the canonical URL ('/api/media/{id}') to persist on the parent document.
+    """
+    ext = MIME_EXT.get(content_type, "bin")
+    file_id = str(uuid.uuid4())
+    path = f"{APP_NAME}/{media_kind}/{user_id}/{file_id}.{ext}"
+    result = put_object(path, content, content_type)
+
+    record = {
+        "id": file_id,
+        "user_id": user_id,
+        "storage_path": result["path"],
+        "original_filename": None,
+        "content_type": content_type,
+        "size": result.get("size", len(content)),
+        "media_type": media_kind,
+        "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.media_files.insert_one(record)
+    return f"/api/media/{file_id}"
+
 # ============================================================
 # Image Moderation (Gemini Vision via Emergent Universal Key)
 # ============================================================
@@ -835,7 +882,8 @@ class UserResponse(BaseModel):
     id: str
     email: str
     name: str
-    avatar_url: Optional[str] = None
+    photo_url: Optional[str] = None
+    avatar_url: Optional[str] = None  # legacy alias; same value as photo_url
     created_at: str
     ghost_mode: Optional[bool] = False
     email_verified: Optional[bool] = False
@@ -2250,6 +2298,7 @@ async def register(response: Response, user_data: UserCreate):
             id=user_id,
             email=user_data.email,
             name=user_data.name,
+            photo_url=None,
             avatar_url=None,
             created_at=now,
             email_verified=False,
@@ -2271,13 +2320,15 @@ async def login(response: Response, credentials: UserLogin):
     # Set httpOnly cookie for secure storage
     set_auth_cookie(response, token)
     
+    photo = user.get('photo_url') or user.get('avatar_url')
     return TokenResponse(
         access_token=token,
         user=UserResponse(
             id=user['id'],
             email=user['email'],
             name=user['name'],
-            avatar_url=user.get('avatar_url'),
+            photo_url=photo,
+            avatar_url=photo,
             created_at=user['created_at'],
             email_verified=bool(user.get('email_verified', False)),
             onboarded=bool(user.get('onboarded', False)),
@@ -2287,11 +2338,16 @@ async def login(response: Response, credentials: UserLogin):
 
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
+    # The DB stores the value under `photo_url`. Expose it under BOTH
+    # `photo_url` (canonical) and `avatar_url` (legacy alias) so old
+    # consumers keep working.
+    photo = current_user.get('photo_url') or current_user.get('avatar_url')
     return UserResponse(
         id=current_user['id'],
         email=current_user['email'],
         name=current_user['name'],
-        avatar_url=current_user.get('avatar_url'),
+        photo_url=photo,
+        avatar_url=photo,
         created_at=current_user['created_at'],
         ghost_mode=bool(current_user.get('ghost_mode', False)),
         email_verified=bool(current_user.get('email_verified', False)),
@@ -3319,19 +3375,21 @@ async def update_profile(data: ProfileUpdate, current_user: dict = Depends(get_c
         await db.users.update_one({"id": current_user['id']}, {"$set": update_data})
     
     updated_user = await db.users.find_one({"id": current_user['id']}, {"_id": 0})
-    
+    photo = updated_user.get('photo_url') or updated_user.get('avatar_url')
+
     return UserResponse(
         id=updated_user['id'],
         email=updated_user['email'],
         name=updated_user['name'],
-        avatar_url=updated_user.get('avatar_url'),
+        photo_url=photo,
+        avatar_url=photo,
         created_at=updated_user['created_at'],
         ghost_mode=bool(updated_user.get('ghost_mode', False))
     )
 
 @api_router.post("/profile/photo")
 async def upload_photo(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
-    """Upload profile photo - stores as base64 for simplicity"""
+    """Upload profile photo - stores in object storage and persists only the URL."""
     try:
         content = await file.read()
         content_type = file.content_type or 'image/jpeg'
@@ -3344,16 +3402,21 @@ async def upload_photo(file: UploadFile = File(...), current_user: dict = Depend
                 detail=f"Image rejected by moderation: {verdict.get('reason') or 'unsafe content'}"
             )
 
-        import base64
-        base64_image = base64.b64encode(content).decode('utf-8')
-        photo_url = f"data:{content_type};base64,{base64_image}"
-        
+        photo_url = await store_media_blob(
+            content=content,
+            content_type=content_type,
+            user_id=current_user['id'],
+            media_kind="profile",
+        )
+
         await db.users.update_one(
-            {"id": current_user['id']}, 
+            {"id": current_user['id']},
             {"$set": {"photo_url": photo_url}}
         )
-        
+
         return {"photo_url": photo_url, "message": "Photo uploaded successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
@@ -3441,9 +3504,12 @@ async def upload_gallery_photo(
                 detail=f"Image rejected by moderation: {verdict.get('reason') or 'unsafe content'}",
             )
 
-        import base64
-        base64_image = base64.b64encode(content).decode("utf-8")
-        url = f"data:{content_type};base64,{base64_image}"
+        url = await store_media_blob(
+            content=content,
+            content_type=content_type,
+            user_id=current_user["id"],
+            media_kind="gallery",
+        )
 
         photo = {
             "id": str(uuid.uuid4()),
@@ -3758,23 +3824,21 @@ async def create_post(
     try:
         # Check file size (limit to 10MB for base64)
         content = await file.read()
-        max_size = 10 * 1024 * 1024  # 10MB
-        
+        max_size = 50 * 1024 * 1024  # 50MB (objstore-backed; larger ok now)
+
         if len(content) > max_size:
-            raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
-        
+            raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB.")
+
         if len(content) == 0:
             raise HTTPException(status_code=400, detail="Empty file uploaded")
-        
-        import base64
-        base64_content = base64.b64encode(content).decode('utf-8')
+
         content_type = file.content_type or 'image/jpeg'
-        
+
         # Validate content type
         allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm']
         if content_type not in allowed_types:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {content_type}")
-        
+
         # Determine media type
         media_type = "video" if content_type.startswith("video") else "image"
 
@@ -3787,7 +3851,12 @@ async def create_post(
                     detail=f"Image rejected by moderation: {verdict.get('reason') or 'unsafe content'}"
                 )
 
-        media_url = f"data:{content_type};base64,{base64_content}"
+        media_url = await store_media_blob(
+            content=content,
+            content_type=content_type,
+            user_id=current_user['id'],
+            media_kind="post",
+        )
         
         now = datetime.now(timezone.utc).isoformat()
         is_premium = await is_premium_user(current_user['id'])

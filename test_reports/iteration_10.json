@@ -1,0 +1,68 @@
+{
+  "summary": "Backend regression for object-storage media migration (base64-in-Mongo → Emergent object storage). 19/19 pytest cases pass against preview (https://crossed-paths-3.preview.emergentagent.com). All 3 refactored endpoints (profile/photo, gallery, posts) now write to object storage and return tiny `/api/media/{uuid}` URLs. GET /api/media/{uuid} returns binary image with Cache-Control. Auth responses now expose BOTH photo_url and avatar_url (legacy alias) carrying the same value. No base64 data URIs found in any read endpoint. No `_id`/`$oid` leaks. Prior endpoints (locations, crossings, achievements, gatherings, subscription/status, push/register) still work. Public legal HTML pages still 200. No regressions found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/push/register",
+        "issue": "Field name is `token`, not `fcm_token` (iteration_9 used `token` correctly; the docs / review note `fcm_token` would 422). Server contract is fine — just a naming reminder."
+      },
+      {
+        "endpoint": "/api/gatherings",
+        "issue": "(Carried over from iter_9, still present) response_model declares List[GatheringResponse] but returns dict {my_gatherings, upcoming}. Schema/handler mismatch."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "POST /api/auth/login — returns access_token + user with BOTH photo_url AND avatar_url (same value)",
+    "GET /api/auth/me — returns same photo_url + avatar_url; no base64; no _id/$oid",
+    "POST /api/profile/photo (multipart PNG) — 200, response ~165 bytes, photo_url = /api/media/{uuid}, NOT base64",
+    "GET /api/media/{uuid} — 200, Content-Type image/png, Cache-Control present, returns actual PNG bytes (\\x89PNG signature), no auth required",
+    "GET /api/auth/me after upload — photo_url now reflects /api/media/ URL",
+    "GET /api/users/{id}/profile — <10KB, no base64, no _id; photo_url is /api/media/...",
+    "GET /api/posts/feed — <100KB, every media_url is /api/media/... or http URL, never data:base64",
+    "POST /api/posts (multipart PNG) — 200, media_url = /api/media/{uuid}, response <5KB, no base64",
+    "POST /api/gallery (multipart PNG + caption) — 200, photo.url = /api/media/{uuid}",
+    "DELETE /api/gallery/{photo_id} cleanup — 200",
+    "Regression: GET /api/locations, /api/crossings, /api/achievements, /api/gatherings, /api/subscription/status — all 200, no _id/$oid leaks",
+    "Regression: POST /api/push/register with valid token (159 chars) — 200",
+    "Public /privacy, /terms, /delete-account — 200 HTML"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_media_objstore_migration.py",
+    "/app/test_reports/pytest/media_objstore_migration.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix GatheringResponse response_model mismatch carried over from iteration_9.",
+    "(Optional) server.py is now 5,482 lines — still single-file monolith. Should be split into routers before next major feature.",
+    "(Optional) Document the push token field name (`token`) in PRD/mobile docs to avoid 422s."
+  ],
+  "critical_code_review_comments": [
+    "store_media_blob() helper is clean: uses uuid file_id, registers in media_files with is_deleted=False and content_type, returns canonical /api/media/{id}. No base64 round-tripping. Good.",
+    "POST /api/posts comment still says 'limit to 10MB for base64' but max_size=50MB now and storage is object-storage backed — outdated comment, harmless.",
+    "MIME_EXT default for unknown content_type falls back to 'bin' — acceptable, but consider rejecting unknown types at the endpoint level (posts/profile/photo currently don't reject every unknown type before calling store_media_blob).",
+    "POST /api/profile/photo does NOT validate content_type against an allowlist before storing — relies on object storage to accept anything. POST /api/posts and POST /api/media/upload DO validate. Recommend adding the same allowlist guard to /api/profile/photo and /api/gallery for hardening.",
+    "GET /api/media/{id} is fully public (no auth/owner check). That's intentional per the review (\"no auth required\") and matches CDN semantics, but worth documenting that profile/post photos are effectively public-by-URL.",
+    "Login response still echoes access_token in body AND sets httpOnly cookie — same dual-mode flagged in iteration_9. Fine for the Capacitor app case, just keep the doc in sync."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_media_objstore_migration.py (new, 19 tests, ~280 LOC)"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19)",
+    "frontend": "not tested (review scoped to backend only)"
+  },
+  "test_credentials": {
+    "owner": {"email": "hiagainxyz@gmail.com", "password": "HiAgain2024!"}
+  },
+  "seed_data_creation": "One profile photo uploaded (persists — replaces previous photo_url for the test account; URL points to objstore PNG). One gallery photo created + deleted in same run. One post created with TEST_post_<uuid> caption (NOT cleaned up — main agent may want to wipe via seed_demo --wipe or add a teardown).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Re-run with: `cd /app && export $(grep -v '^#' frontend/.env | xargs) && python -m pytest backend/tests/test_media_objstore_migration.py -v`. Test covers the full media-objstore migration: auth photo_url+avatar_url duality, profile/photo upload→objstore, /api/media/{uuid} binary retrieval with Cache-Control, /users/{id}/profile size+leak sweep, /posts/feed size+leak sweep, post creation, gallery upload/delete, and full iteration_9 regression set. Push register uses field name `token` (NOT `fcm_token` from review request).",
+  "rca of the issue": "N/A — no bugs found. Migration looks clean: helper store_media_blob() centralizes uuid generation, content_type→ext mapping, media_files record creation, and returns canonical /api/media/{id}. All 3 refactored endpoints (profile/photo, gallery, posts) use it consistently. Response sizes confirmed small (~165 bytes for profile upload). Binary retrieval verified with actual PNG signature."
+}

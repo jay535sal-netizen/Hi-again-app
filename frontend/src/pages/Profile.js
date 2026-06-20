@@ -58,12 +58,28 @@ export default function Profile() {
 
     useEffect(() => {
         loadData();
-        // Load saved photo and bio
-        const savedPhoto = localStorage.getItem('userPhoto');
+        // Load saved photo and bio. Aggressively purge stale base64 blobs left
+        // over from before the object-storage migration — they bloat
+        // localStorage and slow down every page open.
+        let savedPhoto = null;
+        try {
+            savedPhoto = localStorage.getItem('userPhoto');
+            if (savedPhoto && savedPhoto.startsWith('data:')) {
+                localStorage.removeItem('userPhoto');
+                savedPhoto = null;
+            }
+        } catch {
+            // localStorage unavailable — non-critical
+        }
         const savedBio = localStorage.getItem('userBio');
-        if (savedPhoto) setPhotoUrl(savedPhoto);
+        // Prefer the server-authoritative photo (user.photo_url) over the local cache
+        if (user?.photo_url) {
+            setPhotoUrl(user.photo_url);
+        } else if (savedPhoto) {
+            setPhotoUrl(savedPhoto);
+        }
         if (savedBio) setBio(savedBio);
-    }, [loadData]);
+    }, [loadData, user?.photo_url]);
 
     // Keep ghost mode toggle in sync if user data refreshes (e.g. on /auth/me re-check)
     useEffect(() => {
@@ -86,20 +102,28 @@ export default function Profile() {
 
         setUploadingPhoto(true);
         try {
-            // Convert to base64 for preview and storage
+            // Optimistic preview: show the local preview immediately
             const reader = new FileReader();
             reader.onload = async (event) => {
-                const base64 = event.target.result;
-                setPhotoUrl(base64);
-                localStorage.setItem('userPhoto', base64);
-                
-                // Also upload to server
+                const base64Preview = event.target.result;
+                setPhotoUrl(base64Preview);
+
+                // Upload to server (object storage). Replace the local preview
+                // with the SERVER URL once the upload returns — never persist
+                // the multi-MB base64 string to localStorage.
                 try {
-                    await profileApi.uploadPhoto(file);
+                    const res = await profileApi.uploadPhoto(file);
+                    const serverUrl = res?.data?.photo_url;
+                    if (serverUrl) {
+                        setPhotoUrl(serverUrl);
+                        try { localStorage.setItem('userPhoto', serverUrl); } catch {
+                            // localStorage unavailable — non-critical
+                        }
+                    }
                     toast.success('Photo uploaded!');
                 } catch (err) {
-                    // Still show locally even if server fails
-                    toast.success('Photo saved!');
+                    // Surface failure cleanly; don't leave the preview lingering.
+                    toast.error(err?.response?.data?.detail || 'Photo upload failed');
                 }
                 setUploadingPhoto(false);
             };
