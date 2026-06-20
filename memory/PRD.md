@@ -67,7 +67,8 @@
 ## 🗺️ Roadmap
 
 ### P0 — Next 1–7 days (post-Internal Testing)
-- [ ] **🔥 ARCHITECTURAL: Photos & post media stored as base64 data URIs in MongoDB** — `/api/users/{id}/profile` response is **9.7 MB** on the test account because the photo is embedded as base64. Same for `/api/posts/feed`. This will OOM the backend at scale and is the root cause of "Could not load profile" / "Failed to load feed" toasts on mobile (axios timeout fires before the 10+ MB response finishes downloading on cellular). Fix: migrate user photos + post media to object storage (Emergent's `/api/storage/upload` or S3), return URL strings instead. Backfill existing rows.
+- [x] **🔥 ARCHITECTURAL: Migrated photos & post media from base64-in-MongoDB to Emergent object storage** (DONE Feb 15, 2026). Created `store_media_blob()` helper, refactored profile-photo, gallery, and posts upload endpoints. Wrote one-shot migration script `/app/backend/migrate_media_to_objstore.py` (ran on preview — converted 7 records, 8.2 MB reclaimed). API response sizes: profile 9.7 MB → **1.5 KB**, feed → 20 KB. `UserResponse` now exposes BOTH `photo_url` (canonical) and `avatar_url` (legacy alias) carrying the same value. Migration is idempotent + reversible.
+- [ ] **Run migration on PRODUCTION**: `python3 /app/backend/migrate_media_to_objstore.py --apply` against the production Mongo (after user confirms readiness). Then click Deploy to push the refactored upload endpoints.
 - [ ] Install Hi Again on tester phones, gather first-night crash reports via Firebase Crashlytics
 - [ ] Verify FCM push works on a real device (cross-paths nudge)
 - [ ] Verify background-location foreground service notification renders properly on Android 14+
