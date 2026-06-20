@@ -88,22 +88,51 @@
         <script>
             // Hide the "Made with Emergent" badge when running inside the native
             // Capacitor app — testers shouldn't see platform branding in their
-            // installed Android/iOS app. Detect Capacitor by the webview's
-            // origin (https://localhost / capacitor://localhost) or the
-            // Capacitor.isNativePlatform global once @capacitor/core loads.
+            // installed Android/iOS app.
+            //
+            // The Capacitor bridge injects `window.Capacitor` on app start.
+            // Because our Capacitor config loads `hiagain.xyz` directly, the
+            // origin is the same as the web — so we MUST sniff for the
+            // Capacitor bridge, not the origin.
             (function () {
-                try {
-                    var origin = window.location.origin || '';
-                    var isNativeOrigin =
-                        origin.indexOf('capacitor://') === 0 ||
-                        origin === 'https://localhost' ||
-                        origin === 'http://localhost';
-                    if (isNativeOrigin) {
+                function hideBadge() {
+                    try {
                         var badge = document.getElementById('emergent-badge');
                         if (badge) badge.style.display = 'none';
+                    } catch (e) {
+                        // Non-critical
                     }
-                } catch (e) {
-                    // Non-critical — never block app boot for badge cosmetics.
+                }
+                function isNative() {
+                    try {
+                        if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function') {
+                            return window.Capacitor.isNativePlatform();
+                        }
+                        if (window.Capacitor && window.Capacitor.platform && window.Capacitor.platform !== 'web') {
+                            return true;
+                        }
+                        // Fallback: user agent often contains the package id on Android.
+                        var ua = (navigator && navigator.userAgent) || '';
+                        if (ua.indexOf('hiagain') !== -1) return true;
+                    } catch (e) {
+                        // ignore
+                    }
+                    return false;
+                }
+                // Try immediately, then a few times as the bridge initializes.
+                if (isNative()) {
+                    hideBadge();
+                } else {
+                    var tries = 0;
+                    var poll = setInterval(function () {
+                        if (isNative()) {
+                            hideBadge();
+                            clearInterval(poll);
+                        } else if (++tries > 20) {
+                            // Give up after ~2s if no native bridge appears.
+                            clearInterval(poll);
+                        }
+                    }, 100);
                 }
             })();
         </script>

@@ -54,6 +54,10 @@ const api = axios.create({
         'Content-Type': 'application/json',
     },
     withCredentials: true,  // Enable sending cookies with cross-origin requests (web)
+    // ⚠️ Long timeout because user photos and post media are currently stored
+    // as base64 data URIs in MongoDB — profile/feed responses can be 5–20 MB.
+    // TODO(perf): migrate media to object storage and drop timeout back to 15s.
+    timeout: 60000,
 });
 
 // On native, attach Bearer token to every request.
