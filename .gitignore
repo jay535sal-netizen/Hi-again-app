@@ -138,3 +138,4 @@ frontend/android/app/keystore.properties
 frontend/android/app/*.jks
 frontend/android/app/*.keystore
 frontend/node_modules/.cache/default-development/5.pack
+frontend/node_modules/.cache/default-development/3.pack

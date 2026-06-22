@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { referralApi } from '../lib/api';
+import { referralApi, foundersApi } from '../lib/api';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -69,7 +69,7 @@ export default function Register() {
         setLoading(true);
         try {
             await register(name, email, password);
-            
+
             // Apply referral code if provided
             if (referralCode && referrerName) {
                 try {
@@ -80,7 +80,19 @@ export default function Register() {
                     console.warn('Referral apply failed:', err?.message || err);
                 }
             }
-            
+
+            // Auto-redeem founder code if the user came in from /invite/{code}
+            const founderCode = searchParams.get('founder') || localStorage.getItem('pending_founder_code');
+            if (founderCode) {
+                try {
+                    const res = await foundersApi.redeem(founderCode);
+                    localStorage.removeItem('pending_founder_code');
+                    toast.success(`Welcome, Founder #${res.data.founder_number}!`);
+                } catch (err) {
+                    console.warn('Founder redeem failed after signup:', err?.message || err);
+                }
+            }
+
             toast.success('Account created! Welcome to Hi Again.');
             navigate('/dashboard');
         } catch (error) {

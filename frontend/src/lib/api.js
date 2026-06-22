@@ -168,6 +168,15 @@ export const connectionsApi = {
     update: (id, status) => api.patch(`/connections/${id}?status=${status}`),
 };
 
+// Founders 60 API
+export const foundersApi = {
+    stats: () => api.get('/founders/stats'),
+    lookup: (code) => api.get(`/founders/invite/${encodeURIComponent(code)}`),
+    redeem: (code) => api.post('/founders/redeem', { code }),
+    adminList: () => api.get('/admin/founders/codes'),
+    adminSeed: () => api.post('/admin/founders/seed'),
+};
+
 // Profile API
 export const profileApi = {
     update: (data) => api.patch('/profile', data),

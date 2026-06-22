@@ -14,6 +14,7 @@ import { Link } from 'react-router-dom';
 
 import ProfileGallery from '../components/ProfileGallery';
 import EmailPreferences from '../components/EmailPreferences';
+import FoundingMemberBadge from '../components/FoundingMemberBadge';
 
 export default function Profile() {
     const { user, updateUser } = useAuth();
@@ -248,13 +249,18 @@ export default function Profile() {
                                 </Button>
                             </div>
                         ) : (
-                            <h1 
+                            <h1
                                 className="text-2xl font-bold text-slate-800 cursor-pointer hover:text-rose-500 transition-colors inline-flex items-center gap-2"
                                 onClick={() => setEditingName(true)}
                             >
                                 {user?.name}
                                 <Edit2 className="w-4 h-4 opacity-50" />
                             </h1>
+                        )}
+                        {user?.is_founder && (
+                            <div className="mt-2 flex justify-center">
+                                <FoundingMemberBadge number={user?.founder_number} size="sm" />
+                            </div>
                         )}
                         <p className="text-rose-500 font-medium">@{user?.email?.split('@')[0]}</p>
                     </div>

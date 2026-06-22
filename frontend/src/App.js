@@ -24,6 +24,7 @@ import Gatherings from "./pages/Gatherings";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import DeleteAccount from "./pages/DeleteAccount";
+import FounderInvite from "./pages/FounderInvite";
 import Discover from "./pages/Discover";
 import { Loader2 } from "lucide-react";
 
@@ -280,6 +281,15 @@ function AppRoutes() {
             <Route
                 path="/data-deletion"
                 element={<Navigate to="/delete-account" replace />}
+            />
+            <Route
+                path="/invite/:code"
+                element={
+                    <>
+                        <Navbar />
+                        <FounderInvite />
+                    </>
+                }
             />
 
             {/* User Profile Page */}

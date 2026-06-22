@@ -888,6 +888,8 @@ class UserResponse(BaseModel):
     ghost_mode: Optional[bool] = False
     email_verified: Optional[bool] = False
     onboarded: Optional[bool] = False
+    is_founder: Optional[bool] = False
+    founder_number: Optional[int] = None
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -2332,7 +2334,9 @@ async def login(response: Response, credentials: UserLogin):
             created_at=user['created_at'],
             email_verified=bool(user.get('email_verified', False)),
             onboarded=bool(user.get('onboarded', False)),
-            ghost_mode=bool(user.get('ghost_mode', False))
+            ghost_mode=bool(user.get('ghost_mode', False)),
+            is_founder=bool(user.get('is_founder', False)),
+            founder_number=user.get('founder_number'),
         )
     )
 
@@ -2351,7 +2355,9 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         created_at=current_user['created_at'],
         ghost_mode=bool(current_user.get('ghost_mode', False)),
         email_verified=bool(current_user.get('email_verified', False)),
-        onboarded=bool(current_user.get('onboarded', False))
+        onboarded=bool(current_user.get('onboarded', False)),
+        is_founder=bool(current_user.get('is_founder', False)),
+        founder_number=current_user.get('founder_number'),
     )
 
 @api_router.post("/auth/logout")
@@ -5374,6 +5380,234 @@ async def referral_landing(referral_code: str):
         }
     
     return {"valid": False, "redirect": "/register"}
+
+
+# ==================== FOUNDERS 60 ====================
+# A controlled invite system for early-bird seeding. The first 60 redeemed
+# codes grant: 12 months free Premium + permanent "Founding Member" badge
+# (`is_founder: True` + `founder_number: <int>`).
+#
+# Codes are single-use. The owner generates a code via /admin/founders/codes
+# (admin-only), then shares the URL `https://hiagain.xyz/invite/{code}` with
+# the recruited person via DM/text. They click → see the founder pitch →
+# sign up → automatic premium + badge applied.
+
+FOUNDERS_LIMIT = 60
+FOUNDER_PREMIUM_DAYS = 365
+
+
+class FounderInviteResponse(BaseModel):
+    code: str
+    valid: bool
+    redeemed: bool = False
+    founder_number_if_redeemed: Optional[int] = None
+    founders_taken: int
+    founders_total: int = FOUNDERS_LIMIT
+    invited_by: Optional[str] = None  # display name only
+    pitch: str  # the marketing copy to show on the landing page
+
+
+_FOUNDER_PITCH = (
+    "You've been hand-picked as one of the first 60 founding members of Hi Again. "
+    "Founders get a permanent gold badge on their profile, 12 months of Premium "
+    "for free, and a say in the next features we build. We're only opening this "
+    "to 60 people on day one. Reserve your slot below."
+)
+
+
+async def _founders_taken_count() -> int:
+    return await db.users.count_documents({"is_founder": True})
+
+
+@api_router.get("/founders/stats")
+async def get_founders_stats():
+    """Public counter for the landing page. Reveals how many founder slots
+    have been claimed (no PII)."""
+    taken = await _founders_taken_count()
+    # Top cities by founder count (best effort — based on user's most recent
+    # location). Used to render a `127 founders across NYC, LA, Austin` strap.
+    pipeline = [
+        {"$match": {"is_founder": True}},
+        {"$lookup": {
+            "from": "locations",
+            "localField": "id",
+            "foreignField": "user_id",
+            "as": "locs",
+        }},
+        {"$unwind": {"path": "$locs", "preserveNullAndEmptyArrays": True}},
+        {"$group": {"_id": "$locs.city", "count": {"$sum": 1}}},
+        {"$match": {"_id": {"$ne": None}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 5},
+    ]
+    cities = []
+    try:
+        async for row in db.users.aggregate(pipeline):
+            cities.append({"city": row["_id"], "count": row["count"]})
+    except Exception:
+        cities = []
+    return {
+        "taken": taken,
+        "total": FOUNDERS_LIMIT,
+        "remaining": max(0, FOUNDERS_LIMIT - taken),
+        "top_cities": cities,
+    }
+
+
+@api_router.get("/founders/invite/{code}", response_model=FounderInviteResponse)
+async def lookup_founder_invite(code: str):
+    """Public lookup for the /invite/{code} landing page.
+    Returns whether the code is valid + the founder pitch."""
+    code = code.upper().strip()
+    invite = await db.founder_invites.find_one({"code": code}, {"_id": 0})
+    taken = await _founders_taken_count()
+    if not invite:
+        return FounderInviteResponse(
+            code=code, valid=False, founders_taken=taken,
+            pitch=_FOUNDER_PITCH,
+        )
+    invited_by = None
+    if invite.get("invited_by_user_id"):
+        u = await db.users.find_one({"id": invite["invited_by_user_id"]},
+                                    {"_id": 0, "name": 1})
+        if u:
+            invited_by = u.get("name")
+    return FounderInviteResponse(
+        code=code,
+        valid=True,
+        redeemed=bool(invite.get("redeemed_by_user_id")),
+        founder_number_if_redeemed=invite.get("founder_number"),
+        founders_taken=taken,
+        invited_by=invited_by,
+        pitch=_FOUNDER_PITCH,
+    )
+
+
+class FounderRedeemRequest(BaseModel):
+    code: str
+
+
+@api_router.post("/founders/redeem")
+async def redeem_founder_invite(
+    req: FounderRedeemRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Redeem a founder invite code on the currently-logged-in account.
+    Atomically: validates the code, claims the next founder number, sets
+    is_founder + founder_number + premium expiry on the user."""
+    code = req.code.upper().strip()
+    invite = await db.founder_invites.find_one({"code": code}, {"_id": 0})
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid invite code")
+    if invite.get("redeemed_by_user_id"):
+        if invite["redeemed_by_user_id"] == current_user["id"]:
+            # idempotent
+            return {
+                "message": "Already redeemed by you",
+                "founder_number": invite.get("founder_number"),
+            }
+        raise HTTPException(status_code=400, detail="This code has already been redeemed")
+
+    # Check user isn't already a founder via a different code
+    existing = await db.users.find_one(
+        {"id": current_user["id"], "is_founder": True},
+        {"_id": 0, "founder_number": 1},
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You're already a founding member (#{existing.get('founder_number')})",
+        )
+
+    # Atomically claim the next founder number
+    taken = await _founders_taken_count()
+    if taken >= FOUNDERS_LIMIT:
+        raise HTTPException(status_code=400, detail="All 60 founder slots have been claimed")
+    founder_number = taken + 1
+    now = datetime.now(timezone.utc)
+    expiry = now + timedelta(days=FOUNDER_PREMIUM_DAYS)
+
+    # Update user
+    await db.users.update_one(
+        {"id": current_user["id"]},
+        {"$set": {
+            "is_founder": True,
+            "founder_number": founder_number,
+            "founder_redeemed_at": now.isoformat(),
+            "subscription_tier": "premium",
+            "subscription_source": "founder",
+            "subscription_expires_at": expiry.isoformat(),
+        }},
+    )
+
+    # Mark the invite as redeemed
+    await db.founder_invites.update_one(
+        {"code": code},
+        {"$set": {
+            "redeemed_by_user_id": current_user["id"],
+            "redeemed_at": now.isoformat(),
+            "founder_number": founder_number,
+        }},
+    )
+
+    return {
+        "message": "Welcome, founding member!",
+        "founder_number": founder_number,
+        "premium_expires_at": expiry.isoformat(),
+    }
+
+
+# Admin-only: list founder invite codes + generate new ones
+@api_router.get("/admin/founders/codes")
+async def list_founder_codes(current_user: dict = Depends(get_current_user)):
+    if current_user.get("email") not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin only")
+    cursor = db.founder_invites.find({}, {"_id": 0}).sort("code", 1)
+    codes = []
+    async for inv in cursor:
+        # Resolve redeemer name if any
+        name = None
+        if inv.get("redeemed_by_user_id"):
+            u = await db.users.find_one(
+                {"id": inv["redeemed_by_user_id"]},
+                {"_id": 0, "name": 1, "email": 1},
+            )
+            if u:
+                name = u.get("name") or u.get("email")
+        codes.append({
+            "code": inv["code"],
+            "redeemed": bool(inv.get("redeemed_by_user_id")),
+            "redeemed_by_name": name,
+            "redeemed_at": inv.get("redeemed_at"),
+            "founder_number": inv.get("founder_number"),
+            "share_url": f"https://hiagain.xyz/invite/{inv['code']}",
+        })
+    return {"codes": codes, "total": len(codes)}
+
+
+@api_router.post("/admin/founders/seed")
+async def seed_founder_codes(current_user: dict = Depends(get_current_user)):
+    """Idempotent seeder: ensures FOUNDER01..FOUNDER60 exist in the DB."""
+    if current_user.get("email") not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin only")
+    created = 0
+    for i in range(1, FOUNDERS_LIMIT + 1):
+        code = f"FOUNDER{i:02d}"
+        existing = await db.founder_invites.find_one({"code": code}, {"_id": 0})
+        if existing:
+            continue
+        await db.founder_invites.insert_one({
+            "code": code,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "invited_by_user_id": current_user["id"],
+            "redeemed_by_user_id": None,
+            "redeemed_at": None,
+            "founder_number": None,
+        })
+        created += 1
+    total = await db.founder_invites.count_documents({})
+    return {"message": "Seeded", "created": created, "total_in_db": total}
+
 
 # ============================================================
 # Admin: Secure Code Export (Plan B for blocked GitHub pushes)
