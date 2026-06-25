@@ -5475,7 +5475,7 @@ async def lookup_founder_invite(code: str):
     return FounderInviteResponse(
         code=code,
         valid=True,
-        redeemed=bool(invite.get("redeemed_by_user_id")),
+        redeemed=bool(invite.get("multi_use") and False) or (not invite.get("multi_use") and bool(invite.get("redeemed_by_user_id"))),
         founder_number_if_redeemed=invite.get("founder_number"),
         founders_taken=taken,
         invited_by=invited_by,
@@ -5494,14 +5494,18 @@ async def redeem_founder_invite(
 ):
     """Redeem a founder invite code on the currently-logged-in account.
     Atomically: validates the code, claims the next founder number, sets
-    is_founder + founder_number + premium expiry on the user."""
+    is_founder + founder_number + premium expiry on the user.
+
+    Single-use codes (FOUNDER01..FOUNDER60) lock after first claim.
+    Multi-use codes (e.g. JOIN) stay open until all 60 founder slots are
+    filled — share these on social media / group chats."""
     code = req.code.upper().strip()
     invite = await db.founder_invites.find_one({"code": code}, {"_id": 0})
     if not invite:
         raise HTTPException(status_code=404, detail="Invalid invite code")
-    if invite.get("redeemed_by_user_id"):
+    is_multi = bool(invite.get("multi_use"))
+    if not is_multi and invite.get("redeemed_by_user_id"):
         if invite["redeemed_by_user_id"] == current_user["id"]:
-            # idempotent
             return {
                 "message": "Already redeemed by you",
                 "founder_number": invite.get("founder_number"),
@@ -5540,15 +5544,22 @@ async def redeem_founder_invite(
         }},
     )
 
-    # Mark the invite as redeemed
-    await db.founder_invites.update_one(
-        {"code": code},
-        {"$set": {
-            "redeemed_by_user_id": current_user["id"],
-            "redeemed_at": now.isoformat(),
-            "founder_number": founder_number,
-        }},
-    )
+    # Mark the invite as redeemed (multi-use codes only track the latest)
+    update = {
+        "redeemed_by_user_id": current_user["id"],
+        "redeemed_at": now.isoformat(),
+        "founder_number": founder_number,
+    }
+    if is_multi:
+        # For multi-use codes, increment a usage counter instead of locking
+        await db.founder_invites.update_one(
+            {"code": code},
+            {"$inc": {"redemption_count": 1},
+             "$set": {"last_redeemed_at": now.isoformat(),
+                      "last_redeemed_by_user_id": current_user["id"]}},
+        )
+    else:
+        await db.founder_invites.update_one({"code": code}, {"$set": update})
 
     return {
         "message": "Welcome, founding member!",
@@ -5587,7 +5598,8 @@ async def list_founder_codes(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/admin/founders/seed")
 async def seed_founder_codes(current_user: dict = Depends(get_current_user)):
-    """Idempotent seeder: ensures FOUNDER01..FOUNDER60 exist in the DB."""
+    """Idempotent seeder: ensures FOUNDER01..FOUNDER60 + the multi-use
+    shareable JOIN code all exist in the DB."""
     if current_user.get("email") not in ADMIN_EMAILS:
         raise HTTPException(status_code=403, detail="Admin only")
     created = 0
@@ -5603,6 +5615,22 @@ async def seed_founder_codes(current_user: dict = Depends(get_current_user)):
             "redeemed_by_user_id": None,
             "redeemed_at": None,
             "founder_number": None,
+            "multi_use": False,
+        })
+        created += 1
+    # Multi-use shareable code: anyone with this link can claim a spot
+    # until all 60 founder slots are filled. Perfect for IG / FB posts.
+    existing_multi = await db.founder_invites.find_one({"code": "JOIN"}, {"_id": 0})
+    if not existing_multi:
+        await db.founder_invites.insert_one({
+            "code": "JOIN",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "invited_by_user_id": current_user["id"],
+            "redeemed_by_user_id": None,
+            "redeemed_at": None,
+            "founder_number": None,
+            "multi_use": True,
+            "redemption_count": 0,
         })
         created += 1
     total = await db.founder_invites.count_documents({})
