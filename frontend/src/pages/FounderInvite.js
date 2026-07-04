@@ -76,19 +76,23 @@ export default function FounderInvite() {
                     <div className="inline-flex items-center gap-2 mb-6">
                         <FoundingMemberBadge size="lg" showLabel={true} />
                     </div>
-                    <h1 className="font-heading text-4xl md:text-6xl text-white mb-4 leading-tight">
-                        You're invited to be
+                    <h1 className="font-heading text-3xl md:text-5xl text-white mb-6 leading-tight">
+                        Everywhere you've been this year,
                         <br />
                         <span className="bg-gradient-to-r from-amber-300 to-amber-500 bg-clip-text text-transparent">
-                            one of the first 60.
+                            someone was already there.
                         </span>
                     </h1>
-                    <p className="text-lg text-slate-300 max-w-xl mx-auto">
+                    <p className="text-base md:text-lg text-slate-300 max-w-xl mx-auto leading-relaxed">
+                        Same concert. Same corner booth. Same red-eye flight.
+                        Some of them noticed you. All of them are wondering the same thing you are.
+                        <br /><br />
+                        <span className="text-white font-medium">Hi Again — for the ones who almost said something.</span>
                         {invite?.invited_by ? (
-                            <><strong className="text-white">{invite.invited_by}</strong> sent you this. </>
+                            <span className="block mt-4 text-slate-400 text-sm">
+                                <strong className="text-amber-300">{invite.invited_by}</strong> saved you a founder spot.
+                            </span>
                         ) : null}
-                        Hi Again is a new way to reconnect with the people you actually
-                        crossed paths with — not random swipes, real moments.
                     </p>
                 </div>
             </div>

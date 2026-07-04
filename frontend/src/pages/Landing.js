@@ -29,18 +29,18 @@ export default function Landing() {
                     <div>
                         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-300 text-sm font-medium mb-6">
                             <Heart className="w-4 h-4 animate-pulse" />
-                            For moments that deserve a second chance
+                            For the ones who almost said something
                         </div>
 
-                        {/* Updated headline from Genspark */}
-                        <h1 className="font-heading text-5xl md:text-7xl font-light leading-[1.1] text-white mb-6">
-                            Reconnect after
-                            <span className="block gradient-sunset-text font-normal">the moment passes.</span>
+                        <h1 className="font-heading text-4xl md:text-6xl font-light leading-[1.1] text-white mb-6">
+                            Everywhere you've been this year,
+                            <span className="block gradient-sunset-text font-normal">someone was already there.</span>
                         </h1>
 
-                        {/* Updated subheadline from Genspark */}
-                        <p className="text-xl text-slate-300 mb-8 max-w-lg leading-relaxed">
-                            Hi Again helps people turn real-world encounters into real connections — from concerts and games to nights out and chance meetings.
+                        <p className="text-lg text-slate-300 mb-8 max-w-lg leading-relaxed">
+                            Same concert. Same corner booth. Same red-eye flight. Some of them noticed you. All of them are wondering the same thing you are.
+                            <br /><br />
+                            <span className="text-white font-medium">Hi Again — for the ones who almost said something.</span>
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-4">
