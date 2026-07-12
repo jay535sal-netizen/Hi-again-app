@@ -7,6 +7,26 @@
 > **Developer:** Crowdspulse Gsphere LLC
 > **Last updated:** Feb 15, 2026
 
+
+## 🖼️ Feb 15, 2026 — Feed image bug fixed (iteration_12 100% pass)
+
+**Reported:** "Uploaded photos not appearing in feed."
+**Root causes found + fixed:**
+1. **Seed content invisible** — 15 ghost storyteller posts (Maya/Jordan/Ana…) were hidden from `/api/posts/explore` because their users had `ghost_mode=True`. Fix: exempt `is_seed=True` accounts from the ghost filter in both `get_explore_feed` and `get_public_teaser`.
+2. **Wrong field names** — seed posts wrote `content` + `city`/`event_or_place` but the API/UI read `caption` + `location`. Fix: `_post_to_response` now falls back to the seed field names.
+3. **User uploads 422'd from the browser** — axios instance had a global `Content-Type: application/json` default that overrode FormData boundary generation. Fix: request interceptor strips Content-Type when data is a FormData instance. Applies to posts, profile photo, gallery, media, and timeline imports.
+4. **Feed page crashed on 422** — Pydantic error arrays were passed straight to `toast.error()` (React child crash). Fix: coerce array/object detail to string.
+5. **1×1 test artifact pollution** — old pytest 70-byte PNGs looked like broken uploads. Fix: new `POST /api/admin/feed/cleanup_broken` (admin-only) purges them.
+
+**New admin endpoints (idempotent):**
+- `POST /api/admin/feed/seed` — creates 15 ghost storytellers with Unsplash photos in Emergent Object Storage.
+- `POST /api/admin/feed/cleanup_broken` — deletes tiny 1×1 pixel test media + associated posts, resets broken avatars.
+
+**How to run against PRODUCTION:** deploy, then in the production browser console while logged in as admin: `fetch('/api/admin/feed/seed', {method:'POST', credentials:'include'}).then(r=>r.json()).then(console.log)`.
+
+---
+
+
 ---
 
 ## 🎉 SHIPPED — Internal Testing LIVE on Google Play
