@@ -1,0 +1,29 @@
+{
+  "summary": "RE-VERIFY of iteration_11 CRITICAL fixes: BOTH FIXES CONFIRMED WORKING. Backend regression 8/8 pass. UI upload flow now sends multipart/form-data (with boundary) and returns 200; new post appears in feed with rendered image. Bad-file 422/400 path no longer crashes React (no 'Objects are not valid as a React child' overlay). Profile photo upload also works via same axios interceptor path.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "passed_tests": [
+    "Backend pytest 8/8 (test_feed_seed.py): explore returns 15 seed storytellers with real Unsplash images, upload post appears in feed, admin seed idempotent, non-admin 403, cleanup_broken 200, public-teaser (no auth) 3+ posts, ghost seed users hidden from /discover and /users/search",
+    "FIX #1 VERIFIED: UI /feed → create-post-btn → file-input (JPG) → submit-post-btn — Network request went out with Content-Type='multipart/form-data; boundary=----WebKitFormBoundary...' and got HTTP 200. New post with caption 'TEST_iter12_upload_verification_xyz' and TestCity location visible in feed; 37/84 <img> loaded with naturalWidth>100.",
+    "FIX #2 VERIFIED: Uploading a .txt (non-image) triggered backend 400 (not 422 — content-type gate rejects earlier), and importantly the Feed page did NOT crash. No 'Objects are not valid as a React child' overlay. Page remained interactive.",
+    "Profile photo upload from /profile: POST /api/profile/photo with multipart/form-data → 200 OK (confirms axios interceptor fix applies to all FormData callers).",
+    "Login and cookie-based auth still work; /feed loads all seed images."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_feed_seed.py",
+    "/app/test_reports/pytest/feed_seed_iter12.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "api.js still keeps the instance-level `Content-Type: application/json` and relies on the request interceptor to strip it for FormData. This works, but a cleaner design would be to drop the instance default entirely so axios per-request negotiation applies naturally (already noted in iteration_11).",
+    "Feed.js error handler now safely coerces detail (string/array/object) — good. Consider extracting this into a reusable helper (`formatApiError(error)`) and applying to profile photo/gallery upload handlers to prevent regressions of the React child crash on future 422 sites."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (upload + error render + profile photo all pass)"},
+  "test_credentials": {"admin": {"email": "hiagainxyz@gmail.com", "password": "HiAgain2024!"}},
+  "seed_data_creation": "One new post 'TEST_iter12_upload_verification_xyz' with green JPG created by admin during UI test; visible in explore feed. Also one profile photo update on admin account.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Both iteration_11 critical bugs (Content-Type override for FormData and Pydantic array-detail React crash) are fully fixed and verified end-to-end via browser + backend. If any FormData upload starts failing again in future, first grep for the axios request interceptor in /app/frontend/src/lib/api.js (~line 76) that deletes Content-Type for FormData — it must stay. Backend regression file /app/backend/tests/test_feed_seed.py is stable and reusable.",
+  "rca of the issue": "N/A — verification pass, no new issues found."
+}

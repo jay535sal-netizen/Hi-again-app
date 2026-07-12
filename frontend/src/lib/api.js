@@ -61,12 +61,22 @@ const api = axios.create({
 });
 
 // On native, attach Bearer token to every request.
+// Also strip the default `Content-Type: application/json` when sending
+// FormData so axios can generate the correct multipart boundary. Without
+// this, multipart uploads (posts, profile photo, gallery, media) go out
+// as application/json and the backend rejects them with 422.
 api.interceptors.request.use((config) => {
     if (IS_NATIVE) {
         const token = getNativeToken();
         if (token) {
             config.headers = config.headers || {};
             config.headers.Authorization = `Bearer ${token}`;
+        }
+    }
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        if (config.headers) {
+            delete config.headers['Content-Type'];
+            delete config.headers['content-type'];
         }
     }
     return config;

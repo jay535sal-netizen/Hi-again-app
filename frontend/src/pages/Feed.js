@@ -513,7 +513,11 @@ function CreatePostModal({ onClose, onPostCreated }) {
             toast.success('Post created!');
             onPostCreated(response.data);
         } catch (error) {
-            const message = error.response?.data?.detail || 'Failed to create post. Please try again.';
+            const detail = error.response?.data?.detail;
+            let message = 'Failed to create post. Please try again.';
+            if (typeof detail === 'string') message = detail;
+            else if (Array.isArray(detail)) message = detail.map((d) => d?.msg || String(d)).join(', ');
+            else if (detail && typeof detail === 'object') message = detail.msg || JSON.stringify(detail);
             toast.error(message);
         } finally {
             setLoading(false);
