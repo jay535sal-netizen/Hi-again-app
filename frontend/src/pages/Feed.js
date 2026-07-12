@@ -393,37 +393,41 @@ function PostCard({ post, currentUserId, onLike, onDelete, onReport, onBlock, on
                 />
             </div>
             
-            {/* Media */}
-            <div className="relative aspect-square bg-slate-900">
-                {post.media_type === 'video' ? (
-                    <>
-                        <video
-                            ref={videoRef}
-                            src={post.media_url}
+            {/* Media (skip entirely if missing so text-only stories still shine) */}
+            {post.media_url ? (
+                <div className="relative aspect-square bg-slate-900">
+                    {post.media_type === 'video' ? (
+                        <>
+                            <video
+                                ref={videoRef}
+                                src={post.media_url}
+                                className="w-full h-full object-cover"
+                                loop
+                                playsInline
+                                onClick={toggleVideo}
+                            />
+                            <button 
+                                onClick={toggleVideo}
+                                className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
+                            >
+                                {isPlaying ? (
+                                    <Pause className="w-16 h-16 text-white/80" />
+                                ) : (
+                                    <Play className="w-16 h-16 text-white/80" />
+                                )}
+                            </button>
+                        </>
+                    ) : (
+                        <img 
+                            src={post.media_url} 
+                            alt="Post"
                             className="w-full h-full object-cover"
-                            loop
-                            playsInline
-                            onClick={toggleVideo}
+                            loading="lazy"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
                         />
-                        <button 
-                            onClick={toggleVideo}
-                            className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity"
-                        >
-                            {isPlaying ? (
-                                <Pause className="w-16 h-16 text-white/80" />
-                            ) : (
-                                <Play className="w-16 h-16 text-white/80" />
-                            )}
-                        </button>
-                    </>
-                ) : (
-                    <img 
-                        src={post.media_url} 
-                        alt="Post"
-                        className="w-full h-full object-cover"
-                    />
-                )}
-            </div>
+                    )}
+                </div>
+            ) : null}
             
             {/* Actions */}
             <div className="p-4">
@@ -496,10 +500,10 @@ function CreatePostModal({ onClose, onPostCreated }) {
             return;
         }
         
-        // Check file size (10MB limit)
-        const maxSize = 10 * 1024 * 1024;
+        // Check file size (50MB limit — matches backend, uploads objstore)
+        const maxSize = 50 * 1024 * 1024;
         if (file.size > maxSize) {
-            toast.error('File too large. Maximum size is 10MB.');
+            toast.error('File too large. Maximum size is 50MB.');
             return;
         }
         

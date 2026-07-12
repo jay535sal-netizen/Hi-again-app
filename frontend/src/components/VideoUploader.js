@@ -47,7 +47,6 @@ export default function VideoUploader({ onVideoUploaded }) {
             formData.append('media_type', 'promo');
 
             const response = await api.post('/media/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress: (progressEvent) => {
                     const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                     setProgress(percent);

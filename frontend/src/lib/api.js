@@ -116,7 +116,6 @@ export const locationsApi = {
         const formData = new FormData();
         formData.append('file', file);
         return api.post('/locations/import', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
             onUploadProgress: onProgress,
             timeout: 120000, // 2 min for big timeline files
         });
@@ -153,9 +152,7 @@ export const galleryApi = {
         const formData = new FormData();
         formData.append('file', file);
         if (caption) formData.append('caption', caption);
-        return api.post('/gallery', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        return api.post('/gallery', formData);
     },
     remove: (photoId) => api.delete(`/gallery/${photoId}`),
     setPrivacy: (privacy) => api.patch('/gallery/privacy', { privacy }),
@@ -183,9 +180,7 @@ export const profileApi = {
     uploadPhoto: (file) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post('/profile/photo', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        return api.post('/profile/photo', formData);
     },
     getViewers: () => api.get('/profile/viewers'),
     getViewersCount: () => api.get('/profile/viewers/count'),
@@ -210,9 +205,10 @@ export const postsApi = {
         if (caption) formData.append('caption', caption);
         if (location) formData.append('location', location);
         formData.append('is_private', isPrivate ? 'true' : 'false');
-        return api.post('/posts', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        // Do NOT set Content-Type here — axios auto-detects FormData and
+        // adds the multipart boundary correctly. Passing it manually strips
+        // the boundary and the backend gets a corrupted body.
+        return api.post('/posts', formData);
     },
     like: (postId) => api.post(`/posts/${postId}/like`),
     getComments: (postId) => api.get(`/posts/${postId}/comments`),
@@ -246,12 +242,11 @@ export const mediaApi = {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('media_type', mediaType);
-        return api.post('/media/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        // Same as postsApi.create — let axios generate the boundary.
+        return api.post('/media/upload', formData);
     },
     getPromoVideo: () => api.get('/media/promo/video'),
-    getUrl: (mediaId) => `${API_URL}/api/media/${mediaId}`,
+    getUrl: (mediaId) => `${API_URL}/media/${mediaId}`,
 };
 
 // Circle API  

@@ -3926,16 +3926,20 @@ async def _get_blocked_user_ids(user_id: str) -> set:
 
 def _post_to_response(post: dict, current_user_id: str) -> PostResponse:
     liked_by_me = current_user_id in (post.get('likes') or [])
+    # Backward-compat: seeded posts use `content` + `city`/`event_or_place`
+    # while user-uploaded posts use `caption` + `location`.
+    caption = post.get('caption') or post.get('content')
+    location = post.get('location') or post.get('city') or post.get('event_or_place')
     return PostResponse(
         id=post['id'],
         user_id=post['user_id'],
         user_name=post['user_name'],
         user_photo=post.get('user_photo'),
         is_premium=post.get('is_premium', False),
-        media_url=post['media_url'],
-        media_type=post['media_type'],
-        caption=post.get('caption'),
-        location=post.get('location'),
+        media_url=post.get('media_url') or "",
+        media_type=post.get('media_type') or "image",
+        caption=caption,
+        location=location,
         likes_count=post.get('likes_count', 0),
         comments_count=post.get('comments_count', 0),
         liked_by_me=liked_by_me,
@@ -3980,15 +3984,21 @@ async def get_explore_feed(
     skip = max(0, skip)
     blocked = await _get_blocked_user_ids(current_user['id'])
 
-    # Ghost-mode users — exclude
+    # Ghost-mode users — exclude from public feed EXCEPT seeded storytelling
+    # accounts (is_seed=True). Ghost mode still hides them from crossings,
+    # discover, search, and notifications — but their content is meant to
+    # populate the feed for cold-start.
     ghost_ids = set()
-    async for u in db.users.find({"ghost_mode": True}, {"_id": 0, "id": 1}):
+    async for u in db.users.find(
+        {"ghost_mode": True, "is_seed": {"$ne": True}}, {"_id": 0, "id": 1}
+    ):
         ghost_ids.add(u["id"])
 
     excluded_ids = list(blocked | ghost_ids - {current_user['id']})
 
     query: dict = {
         "removed": {"$ne": True},
+        "media_url": {"$nin": [None, ""]},  # hide broken/no-media posts
         "$or": [
             {"is_private": {"$ne": True}},
             {"user_id": current_user['id']},  # always show own posts
@@ -4043,10 +4053,17 @@ async def get_public_teaser(limit: int = 3):
     """Anonymous-safe preview of recent public posts. No auth required.
     Returns lightly masked posts to encourage signups while previewing the vibe."""
     limit = max(1, min(limit, 10))
+    # Exclude ghost users EXCEPT seeded storytellers.
     ghost_ids = set()
-    async for u in db.users.find({"ghost_mode": True}, {"_id": 0, "id": 1}):
+    async for u in db.users.find(
+        {"ghost_mode": True, "is_seed": {"$ne": True}}, {"_id": 0, "id": 1}
+    ):
         ghost_ids.add(u["id"])
-    query = {"removed": {"$ne": True}, "is_private": {"$ne": True}}
+    query = {
+        "removed": {"$ne": True},
+        "is_private": {"$ne": True},
+        "media_url": {"$nin": [None, ""]},
+    }
     if ghost_ids:
         query["user_id"] = {"$nin": list(ghost_ids)}
     posts = await db.posts.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
@@ -4059,8 +4076,8 @@ async def get_public_teaser(limit: int = 3):
             "user_photo": p.get("user_photo"),
             "media_url": p["media_url"],
             "media_type": p["media_type"],
-            "caption": p.get("caption"),
-            "location": p.get("location"),
+            "caption": p.get("caption") or p.get("content"),
+            "location": p.get("location") or p.get("city"),
             "likes_count": p.get("likes_count", 0),
             "comments_count": p.get("comments_count", 0),
             "created_at": p["created_at"],
@@ -5635,6 +5652,185 @@ async def seed_founder_codes(current_user: dict = Depends(get_current_user)):
         created += 1
     total = await db.founder_invites.count_documents({})
     return {"message": "Seeded", "created": created, "total_in_db": total}
+
+
+# ============================================================
+# Admin: Seed the public feed with viral missed-connection stories.
+# Idempotent — safe to re-run against production to backfill.
+# ============================================================
+SEED_STORIES = [
+    ("Maya", "Brooklyn", "L train, 8:47 AM",
+     "you were reading a book about grief on the L train tuesday morning. i almost asked what page you were on. i've been on page 47 for a month.",
+     "https://images.unsplash.com/photo-1519681393784-d120267933ba"),
+    ("Jordan", "Austin", "ACL Festival — night one",
+     "you asked me to hold your beer during phoebe bridgers. i still have it. still cold. still waiting.",
+     "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3"),
+    ("Ana", "Miami", "Wynwood coffee shop",
+     "you left your notebook. i didn't open it. but i sat with it for 40 minutes hoping you'd come back. you didn't. it's still with me.",
+     "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085"),
+    ("Marcus", "Denver", "Red Rocks, September 12",
+     "we were both wearing red. we made eye contact 3 times during ODESZA. the fourth time i lost you in the crowd. still looking.",
+     "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f"),
+    ("Sana", "Portland", "Powell's Books, sci-fi section",
+     "you recommended dune. i said i'd read it. i did. i want to talk about it. i can't find you.",
+     "https://images.unsplash.com/photo-1512820790803-83ca734da794"),
+    ("Devon", "NYC", "JFK → LAX red-eye",
+     "seat 27B. you slept on my shoulder for 4 hours. neither of us apologized. we just walked off in different directions.",
+     "https://images.unsplash.com/photo-1436491865332-7a61a109cc05"),
+    ("Riley", "Chicago", "The Bean, October",
+     "you were with a friend. you took a photo of me. you thought i didn't notice. i did.",
+     "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df"),
+    ("Emmy", "Seattle", "Pike Place fish market",
+     "you laughed when they threw the salmon. it was the best laugh i've heard all year. i didn't say anything.",
+     "https://images.unsplash.com/photo-1516214104703-d870798883c5"),
+    ("Zoe", "Nashville", "Bluebird Cafe",
+     "you knew every word to the third song. i watched you the entire time. sorry not sorry.",
+     "https://images.unsplash.com/photo-1516280440614-37939bbacd81"),
+    ("Alex", "Boston", "Fenway, section 34",
+     "hot dog guy. red sox down 3. you turned to me and said 'we're not losing tonight.' we lost. but you were right about the important part.",
+     "https://images.unsplash.com/photo-1566577739112-5180d4bf9390"),
+    ("Priya", "San Francisco", "Golden Gate at sunset",
+     "you were taking a photo of the fog. i offered to take one with you in it. you said no. i've regretted it every day since.",
+     "https://images.unsplash.com/photo-1449034446853-66c86144b0ad"),
+    ("Kai", "LA", "Runyon Canyon, 6am hike",
+     "your dog jumped on me. you apologized. i wanted to say don't. i miss both of you.",
+     "https://images.unsplash.com/photo-1544568100-847a948585b9"),
+    ("Nadia", "Atlanta", "Ponce City Market, food hall",
+     "you ordered the same thing as me at 3 different stalls in a row. we didn't say anything. i think we should have.",
+     "https://images.unsplash.com/photo-1555396273-367ea4eb4db5"),
+    ("Sam", "Vegas", "Bellagio fountains, midnight",
+     "you were crying. i pretended not to notice because i thought that's what you'd want. i've been thinking about it for two years.",
+     "https://images.unsplash.com/photo-1506905925346-21bda4d32df4"),
+    ("Layla", "New Orleans", "Frenchmen St, Friday night",
+     "we danced next to each other for two songs. you looked at me during the sax solo. i looked away. i'm sorry i looked away.",
+     "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3"),
+]
+
+
+@api_router.post("/admin/feed/seed")
+async def seed_public_feed(current_user: dict = Depends(get_current_user)):
+    """Idempotent: creates 15 ghost 'seed' storyteller accounts and their
+    viral missed-connection posts, downloading Unsplash photos into the
+    Emergent object storage. Re-runnable — back-fills missing media/caption
+    on existing seed rows without duplicating them."""
+    if current_user.get("email") not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    import hashlib as _hashlib
+    now = datetime.now(timezone.utc)
+    created_users = 0
+    filled_posts = 0
+    skipped = 0
+
+    for i, (author, city, event, story, photo_url) in enumerate(SEED_STORIES):
+        user_id = "seed-" + _hashlib.sha1(author.encode()).hexdigest()[:12]
+
+        existing_user = await db.users.find_one({"id": user_id}, {"_id": 0})
+        if not existing_user:
+            await db.users.insert_one({
+                "id": user_id,
+                "email": f"{author.lower()}@stories.hiagain.xyz",
+                "name": author,
+                "password_hash": "$seed$",
+                "created_at": (now - timedelta(days=(15 - i))).isoformat(),
+                "ghost_mode": True,
+                "email_verified": True,
+                "onboarded": True,
+                "is_seed": True,
+                "subscription_tier": "free",
+                "bio": "just crossing paths.",
+            })
+            created_users += 1
+
+        story_id = "seedpost-" + _hashlib.sha1((author + story).encode()).hexdigest()[:16]
+        existing_post = await db.posts.find_one({"id": story_id}, {"_id": 0})
+        if existing_post and existing_post.get("caption") and existing_post.get("media_url"):
+            skipped += 1
+            continue
+
+        media_url = (existing_post or {}).get("media_url")
+        if not media_url:
+            try:
+                r = requests.get(f"{photo_url}?auto=format&fit=crop&w=1080&q=80", timeout=30)
+                r.raise_for_status()
+                content = r.content
+                ct = r.headers.get("Content-Type", "image/jpeg")
+                media_url = await store_media_blob(
+                    content=content,
+                    content_type=ct,
+                    user_id=user_id,
+                    media_kind="post",
+                )
+                # Tag as seed for future cleanup
+                await db.media_files.update_one(
+                    {"id": media_url.split("/")[-1]},
+                    {"$set": {"is_seed": True}},
+                )
+            except Exception as e:
+                logger.warning(f"Seed feed image failed for {author}: {e}")
+                media_url = None
+
+        posted_at = (now - timedelta(hours=(i * 5 + 2))).isoformat()
+        doc = {
+            "id": story_id,
+            "user_id": user_id,
+            "user_name": author,
+            "user_photo": None,
+            "caption": story,
+            "content": story,
+            "media_url": media_url,
+            "media_type": "image" if media_url else None,
+            "location": f"{event} · {city}",
+            "city": city,
+            "event_or_place": event,
+            "is_private": False,
+            "removed": False,
+            "likes": [],
+            "likes_count": (i * 47 + 89) % 500,
+            "comments_count": (i * 13 + 7) % 40,
+            "created_at": (existing_post or {}).get("created_at") or posted_at,
+            "is_seed": True,
+        }
+        await db.posts.update_one({"id": story_id}, {"$set": doc}, upsert=True)
+        filled_posts += 1
+
+    total_posts = await db.posts.count_documents({"is_seed": True, "media_url": {"$nin": [None, ""]}})
+    return {
+        "created_users": created_users,
+        "filled_posts": filled_posts,
+        "skipped_already_complete": skipped,
+        "total_seed_posts_with_media": total_posts,
+    }
+
+
+@api_router.post("/admin/feed/cleanup_broken")
+async def cleanup_broken_media(current_user: dict = Depends(get_current_user)):
+    """Delete tiny 1×1 pixel test artifacts (posts + media_files < 500 bytes)
+    that pollute developer accounts. Safe: only touches records where the
+    stored blob is smaller than a real photo could possibly be."""
+    if current_user.get("email") not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    tiny_ids = []
+    async for m in db.media_files.find({"size": {"$lt": 500}}, {"_id": 0, "id": 1}):
+        tiny_ids.append(m["id"])
+    if not tiny_ids:
+        return {"deleted_media": 0, "deleted_posts": 0}
+
+    tiny_urls = [f"/api/media/{fid}" for fid in tiny_ids]
+    posts_del = await db.posts.delete_many({"media_url": {"$in": tiny_urls}})
+    # Un-set broken profile photos so those users fall back to initials avatar
+    users_upd = await db.users.update_many(
+        {"photo_url": {"$in": tiny_urls}},
+        {"$set": {"photo_url": None}},
+    )
+    media_del = await db.media_files.delete_many({"id": {"$in": tiny_ids}})
+    return {
+        "deleted_media": media_del.deleted_count,
+        "deleted_posts": posts_del.deleted_count,
+        "reset_user_photos": users_upd.modified_count,
+    }
+
 
 
 # ============================================================

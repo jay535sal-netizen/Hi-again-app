@@ -36,6 +36,15 @@
 - Demo password (all demo users): `HiAgainDemo2026!`
 - Avatars: randomuser.me (CC0). Post/cover images: picsum.photos (CC0).
 
+## Public Feed Seed (viral missed-connection stories, ghost accounts)
+- Admin endpoint: `POST /api/admin/feed/seed` (idempotent)
+- Admin endpoint: `POST /api/admin/feed/cleanup_broken` (removes tiny 1×1 test images)
+- Requires login as admin (`hiagainxyz@gmail.com`)
+- 15 ghost seed users (Maya, Jordan, Ana, Marcus, Sana, Devon, Riley, Emmy, Zoe, Alex, Priya, Kai, Nadia, Sam, Layla)
+- Each posts a viral-style story with a legally-licensed Unsplash photo stored in Emergent Object Storage
+- Rows tagged `is_seed: True` — ghost_mode users are excluded from crossings/discover/search but **surfaced** on the public feed
+
+
 ## Resetting onboarding/verification flags for testing
 ```bash
 cd /app/backend && python3 -c "

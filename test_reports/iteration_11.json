@@ -1,0 +1,69 @@
+{
+  "summary": "Backend feed/seed image bug fix: FULLY VERIFIED (8/8 pytest cases pass). /api/posts/explore returns all 15 seed storytellers (Maya, Jordan, Ana, Marcus, Sana, Devon, Riley, Emmy, Zoe, Alex, Priya, Kai, Nadia, Sam, Layla) with /api/media/{uuid} URLs and real Unsplash images (each > 5KB). Admin seed endpoint is idempotent, non-admin gets 403, cleanup_broken returns 200, public-teaser (no auth) returns 3+ posts, ghost seed users are correctly hidden from /api/discover and /api/users/search. Backend uploaded post via multipart/form-data works end-to-end (create + explore visibility + media retrieval). FRONTEND: seed feed rendering is CORRECT — logged into /feed and all 15 seed storyteller names visible with images loading at naturalWidth=1080. HOWEVER, TWO CRITICAL FRONTEND BUGS block the user-upload flow from the browser (though the exact same backend endpoint works fine from Python/curl).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "src/lib/api.js (axios instance)",
+        "issue": "CRITICAL: axios instance has `headers: {'Content-Type': 'application/json'}` as instance default (lines 53-55). When postsApi.create sends FormData, this default is NOT overridden — the request goes out with `Content-Type: application/json` (verified via browser network intercept), so FastAPI sees no multipart body and returns 422 `Field required: body.file`. Confirmed by comparing: raw `fetch()` with FormData → 200, axios FormData via postsApi.create → 422 with CT=application/json. The comment 'axios auto-detects FormData' is wrong when a JSON default already sits on the instance. Fix: in postsApi.create / profileApi.uploadPhoto / galleryApi.upload / mediaApi.upload, pass `{ headers: { 'Content-Type': undefined } }` (or `headers: { 'Content-Type': multipart/form-data' } without boundary and let axios overwrite) — or better, remove the instance-level default Content-Type and rely on axios per-request detection.",
+        "selector": "postsApi.create → POST /api/posts",
+        "priority": "CRITICAL"
+      },
+      {
+        "component": "src/pages/Feed.js handleSubmit (line 515-517)",
+        "issue": "CRITICAL: `toast.error(error.response?.data?.detail || 'Failed…')` — when backend returns Pydantic 422, `detail` is an ARRAY of dicts `[{type,loc,msg,input,url}]`. Passing that to toast.error (which renders as React child) crashes the entire feed page with 'Objects are not valid as a React child (found: object with keys {type, loc, msg, input, url})'. The runtime error overlay appears full-screen and blocks all interaction. Fix: coerce detail — `typeof detail === 'string' ? detail : (Array.isArray(detail) ? detail.map(d => d.msg).join(', ') : 'Upload failed')`.",
+        "selector": "[data-testid='submit-post-btn']",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "User photo upload from /feed → POST /api/posts",
+        "issue": "End-to-end broken via UI: submit-post-btn → axios sends application/json content-type → backend 422 → React crashes rendering error object. Backend itself works when called via curl/python (verified in backend test suite).",
+        "affected_selectors": ["[data-testid='submit-post-btn']", "[data-testid='file-input']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "GET /api/posts/explore returns >=15 seed storyteller posts (all 15 names present)",
+    "Each seed media_url returns real image (>5KB, no 1×1 placeholders)",
+    "Backend POST /api/posts multipart (via requests lib) → post created + visible in explore + media fetchable",
+    "POST /api/admin/feed/seed 1st + 2nd call idempotent",
+    "POST /api/admin/feed/seed as non-admin → 403",
+    "POST /api/admin/feed/cleanup_broken as admin → 200",
+    "GET /api/posts/public-teaser (no auth) returns 3+ posts with media_url and caption",
+    "Ghost seed users hidden from /api/discover and /api/users/search",
+    "Frontend /feed page: all 15 seed storyteller names rendered with real photos (naturalWidth=1080)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_feed_seed.py",
+    "/app/test_reports/pytest/feed_seed.xml"
+  ],
+  "action_items": [
+    "FIX #1 (CRITICAL): Remove or override the instance-level `Content-Type: application/json` in /app/frontend/src/lib/api.js. Either drop it from the axios.create defaults, or in every FormData caller (postsApi.create, profileApi.uploadPhoto, galleryApi.upload, mediaApi.upload) pass `{ headers: { 'Content-Type': undefined } }` so axios re-computes multipart boundary. Repro: log in via UI, /feed → Post → attach JPG → Submit → observe 422 with request Content-Type: application/json.",
+    "FIX #2 (CRITICAL): In /app/frontend/src/pages/Feed.js handleSubmit error branch (line ~516), stringify Pydantic array-shaped `detail` before toast.error to avoid React crash. Same defensive shape check should be applied in other upload handlers (profile photo, gallery) that may also see 422 error arrays.",
+    "After FIX #1, verify all four FormData endpoints (posts, profile photo, gallery, media/upload) still upload from the browser."
+  ],
+  "critical_code_review_comments": [
+    "The comment on lines 208-210 of api.js is misleading: 'Do NOT set Content-Type here — axios auto-detects FormData…'. Axios only auto-detects when there is no existing Content-Type header; the instance default at line 54 defeats this. This trap has now caused an image-upload regression exactly one iteration after the media→objstore migration.",
+    "Feed.js loading indicator triggers before file validation confirmation — minor UX; if 422 rendering crash is fixed, user still sees a generic 'Failed to create post' toast without knowing the field problem.",
+    "Consider stripping the global axios default Content-Type entirely and letting axios per-request negotiate (JSON payload → application/json, FormData → multipart with boundary, plain string → text/plain). Much less surprising."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_feed_seed.py (new, 8 tests)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "50% — display flow works (seed posts + images render); upload flow is broken (both 422 due to Content-Type and React crash on error render)"
+  },
+  "test_credentials": {"admin": {"email": "hiagainxyz@gmail.com", "password": "HiAgain2024!"}},
+  "seed_data_creation": "Backend test created one post 'TEST_feed_upload_<uuid>' owned by admin; visible in explore feed. Not cleaned up.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend for the feed/seed image bug is confirmed working. If main agent applies FIX #1 (Content-Type) and FIX #2 (Pydantic error rendering), retest by: (a) logging in at /login as admin, (b) navigating to /feed, (c) clicking Post button (create-post-btn), (d) attaching a JPG via file-input, (e) filling caption, (f) submitting — verify network POST /api/posts has Content-Type starting with 'multipart/form-data; boundary=…' and returns 200. Backend test file /app/backend/tests/test_feed_seed.py can be reused with `pytest backend/tests/test_feed_seed.py -v`.",
+  "rca of the issue": "Frontend upload 422: axios instance in /app/frontend/src/lib/api.js declares `headers: { 'Content-Type': 'application/json' }` as an instance-level default. When postsApi.create passes FormData, axios respects the instance default and does NOT recompute multipart/form-data — the browser sends `application/json` and FastAPI's multipart parser sees zero form fields (`body.file` missing → 422). Verified with browser network intercept (CT=application/json in the failing request) AND by running a plain fetch() with FormData from the same page which returns 200. React crash: Feed.js handleSubmit passes `error.response.data.detail` directly to toast.error; Pydantic v2 emits a list of error dicts here, and React cannot render dict children."
+}
