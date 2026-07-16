@@ -34,8 +34,8 @@ if not BASE_URL:
             if line.startswith("REACT_APP_BACKEND_URL="):
                 BASE_URL = line.split("=", 1)[1].strip().rstrip("/")
 
-OWNER_EMAIL = "hiagainxyz@gmail.com"
-OWNER_PASSWORD = "HiAgain2024!"
+OWNER_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "hiagainxyz@gmail.com")
+OWNER_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "HiAgain2024!")
 
 
 # ---------- helpers ----------

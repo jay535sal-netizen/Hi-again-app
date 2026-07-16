@@ -280,9 +280,9 @@ function SwipeCard({ candidate, isTop, stackPos, sending, onDecide }) {
                         className="absolute top-3 left-3 right-3 flex gap-1 z-20 pointer-events-none"
                         data-testid={`swipe-photo-dots-${candidate.user_id}`}
                     >
-                        {allPhotos.map((_, i) => (
+                        {allPhotos.map((photo, i) => (
                             <div
-                                key={i}
+                                key={`${candidate.user_id}-dot-${i}`}
                                 className={`flex-1 h-1 rounded-full transition-colors ${
                                     i === photoIdx ? 'bg-white' : 'bg-white/30'
                                 }`}

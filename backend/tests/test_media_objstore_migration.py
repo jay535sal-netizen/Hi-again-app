@@ -27,8 +27,8 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
 
-EMAIL = "hiagainxyz@gmail.com"
-PASSWORD = "HiAgain2024!"
+EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "hiagainxyz@gmail.com")
+PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "HiAgain2024!")
 
 # 1x1 PNG (transparent) for multipart tests
 TINY_PNG_B64 = (

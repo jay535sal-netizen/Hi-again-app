@@ -18,8 +18,8 @@ import pytest
 from PIL import Image
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://crossed-paths-3.preview.emergentagent.com").rstrip("/")
-ADMIN_EMAIL = "hiagainxyz@gmail.com"
-ADMIN_PASSWORD = "HiAgain2024!"
+ADMIN_EMAIL = os.environ.get("TEST_ADMIN_EMAIL", "hiagainxyz@gmail.com")
+ADMIN_PASSWORD = os.environ.get("TEST_ADMIN_PASSWORD", "HiAgain2024!")
 
 SEED_NAMES = {"Maya", "Jordan", "Ana", "Marcus", "Sana", "Devon", "Riley",
               "Emmy", "Zoe", "Alex", "Priya", "Kai", "Nadia", "Sam", "Layla"}
@@ -148,7 +148,7 @@ def test_admin_seed_feed_idempotent(admin_headers):
 def test_admin_seed_feed_forbidden_for_non_admin():
     # Create a temporary non-admin user
     email = f"test_nonadmin_{uuid.uuid4().hex[:8]}@example.com"
-    password = "TestPass123!"
+    password = f"TestPass_{uuid.uuid4().hex[:12]}!"
     reg = requests.post(f"{BASE_URL}/api/auth/register",
                         json={"email": email, "password": password, "name": "NonAdmin Test"},
                         timeout=30)
