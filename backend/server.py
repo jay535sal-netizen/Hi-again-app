@@ -918,6 +918,8 @@ class CrossingResponse(BaseModel):
     other_user_name: str
     other_user_email: str
     other_user_photo: Optional[str] = None
+    other_is_founder: Optional[bool] = False
+    other_founder_number: Optional[int] = None
     city: Optional[str] = ""
     event_or_place: Optional[str] = ""
     date: Optional[str] = ""
@@ -2889,29 +2891,40 @@ async def get_crossings(current_user: dict = Depends(get_current_user)):
     }, {"_id": 0, "user_id": 1}).to_list(1000)
     premium_user_ids = set(sub['user_id'] for sub in premium_subscriptions)
 
-    # Ghost Mode: hide users who have ghost mode currently enabled
-    ghost_users = await db.users.find(
-        {"id": {"$in": other_user_ids}, "ghost_mode": True},
-        {"_id": 0, "id": 1}
-    ).to_list(1000)
-    ghost_user_ids = {u['id'] for u in ghost_users}
+    # Batch fetch founder + ghost status for all other users
+    users_meta = {}
+    async for u in db.users.find(
+        {"id": {"$in": other_user_ids}},
+        {"_id": 0, "id": 1, "is_founder": 1, "founder_number": 1, "ghost_mode": 1},
+    ):
+        users_meta[u["id"]] = u
+    ghost_user_ids = {uid for uid, u in users_meta.items() if u.get("ghost_mode")}
 
-    # Enhance crossings with premium status (skip ghosted users)
+    # Enhance crossings with premium + founder status (skip ghosted users)
     enhanced_crossings = []
     for c in crossings:
         if c['other_user_id'] in ghost_user_ids:
             continue
         c['other_is_premium'] = c['other_user_id'] in premium_user_ids
-        
+        meta = users_meta.get(c['other_user_id'], {})
+        c['other_is_founder'] = bool(meta.get('is_founder'))
+        c['other_founder_number'] = meta.get('founder_number')
+
         # If current user is free, blur contact info
         if tier['tier'] == 'free':
             c['other_user_email'] = c['other_user_email'][:3] + '***@***.com'
-        
+
         enhanced_crossings.append(c)
-    
-    # Sort premium users to top
-    enhanced_crossings.sort(key=lambda x: (not x.get('other_is_premium', False), x['created_at']), reverse=True)
-    
+
+    # Sort: founders first, then premium, then newest
+    enhanced_crossings.sort(
+        key=lambda x: (
+            not x.get('other_is_founder', False),
+            not x.get('other_is_premium', False),
+            -1 * int(''.join(ch for ch in x['created_at'] if ch.isdigit())[:14] or '0'),
+        )
+    )
+
     return [CrossingResponse(**c) for c in enhanced_crossings]
 
 @api_router.get("/crossings/stats")
@@ -3571,6 +3584,8 @@ class DiscoverCandidate(BaseModel):
     bio: Optional[str] = None
     city: Optional[str] = None
     is_premium: bool = False
+    is_founder: bool = False
+    founder_number: Optional[int] = None
     score: int
     reasons: List[str] = []
 
@@ -3707,7 +3722,8 @@ async def discover_people(current_user: dict = Depends(get_current_user)):
     users_map = {}
     async for u in db.users.find(
         {"id": {"$in": cand_ids}, "ghost_mode": {"$ne": True}},
-        {"_id": 0, "id": 1, "name": 1, "photo_url": 1, "bio": 1, "city": 1, "is_premium": 1, "gallery_privacy": 1},
+        {"_id": 0, "id": 1, "name": 1, "photo_url": 1, "bio": 1, "city": 1,
+         "is_premium": 1, "gallery_privacy": 1, "is_founder": 1, "founder_number": 1},
     ):
         users_map[u["id"]] = u
 
@@ -3745,12 +3761,124 @@ async def discover_people(current_user: dict = Depends(get_current_user)):
             bio=u.get("bio"),
             city=u.get("city"),
             is_premium=bool(u.get("is_premium")),
+            is_founder=bool(u.get("is_founder")),
+            founder_number=u.get("founder_number"),
             score=payload["score"],
             reasons=payload["reasons"][:3],
         ))
 
-    results.sort(key=lambda r: r.score, reverse=True)
+    # Sort: founders bubble up above equal-scored non-founders, then by score
+    results.sort(key=lambda r: (not r.is_founder, -r.score))
     return results[:30]
+
+
+class DiscoverTeaser(BaseModel):
+    id: str
+    event_or_place: Optional[str] = None
+    city: Optional[str] = None
+    other_count: int
+    hint: str
+
+
+@api_router.get("/discover/teasers", response_model=List[DiscoverTeaser])
+async def discover_teasers(current_user: dict = Depends(get_current_user)):
+    """Ghost teasers for the Discover empty state. Returns anonymized
+    metadata-only 'someone was here too' hooks so the UI never feels dead
+    while we build up a user's real crossings history."""
+    me_id = current_user['id']
+
+    # My places / events / cities
+    my_events, my_cities = set(), set()
+    async for loc in db.locations.find(
+        {"user_id": me_id},
+        {"_id": 0, "event_or_place": 1, "city": 1},
+    ).limit(500):
+        ev = (loc.get("event_or_place") or "").strip()
+        city = (loc.get("city") or "").strip()
+        if ev and ev.lower() not in ("unknown", "unknown place", ""):
+            my_events.add(ev)
+        if city and city.lower() not in ("unknown", ""):
+            my_cities.add(city)
+
+    if not my_events and not my_cities:
+        return []
+
+    teasers: list = []
+    seen = set()
+
+    # 1) Events I've been to that OTHER real (non-ghost) users have also been to
+    if my_events:
+        pipeline = [
+            {"$match": {
+                "user_id": {"$ne": me_id},
+                "event_or_place": {"$in": list(my_events)},
+            }},
+            {"$group": {
+                "_id": {"event_or_place": "$event_or_place", "city": "$city"},
+                "user_ids": {"$addToSet": "$user_id"},
+            }},
+            {"$limit": 20},
+        ]
+        async for row in db.locations.aggregate(pipeline):
+            ev = row["_id"].get("event_or_place")
+            city = row["_id"].get("city")
+            users = row.get("user_ids") or []
+            # Filter ghost users out
+            valid = 0
+            async for u in db.users.find(
+                {"id": {"$in": users}, "ghost_mode": {"$ne": True}},
+                {"_id": 0, "id": 1},
+            ):
+                valid += 1
+            if valid <= 0:
+                continue
+            key = ((ev or "").strip().lower(), (city or "").strip().lower())
+            if not key[0] and not key[1]:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            teaser_id = "teaser-" + hashlib.sha1(f"{key[0]}|{key[1]}".encode()).hexdigest()[:12]
+            if ev and city:
+                hint = f"Someone was at {ev} in {city} too"
+            elif ev:
+                hint = f"Someone was at {ev} too"
+            else:
+                hint = f"Someone was in {city} too"
+            teasers.append(DiscoverTeaser(
+                id=teaser_id,
+                event_or_place=ev,
+                city=city,
+                other_count=valid,
+                hint=hint,
+            ))
+            if len(teasers) >= 5:
+                break
+
+    # 2) Fallback — cities I've been to
+    if len(teasers) < 3 and my_cities:
+        for city in list(my_cities)[:10]:
+            key = ("", city.strip().lower())
+            if key in seen:
+                continue
+            count = await db.users.count_documents({
+                "city": {"$regex": f"^{city}$", "$options": "i"},
+                "id": {"$ne": me_id},
+                "ghost_mode": {"$ne": True},
+            })
+            if count > 0:
+                seen.add(key)
+                teasers.append(DiscoverTeaser(
+                    id="teaser-city-" + hashlib.sha1(city.encode()).hexdigest()[:12],
+                    event_or_place=None,
+                    city=city,
+                    other_count=count,
+                    hint=f"{count} {'person' if count == 1 else 'people'} in {city}",
+                ))
+            if len(teasers) >= 5:
+                break
+
+    return teasers[:5]
 
 
 # ==================== GDPR/PRIVACY COMPLIANCE ====================

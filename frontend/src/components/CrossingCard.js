@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { getInitials, formatDate } from '../lib/utils';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import FoundingMemberBadge from './FoundingMemberBadge';
 
 // Match type icons and colors
 const matchTypeConfig = {
@@ -78,10 +79,13 @@ export default function CrossingCard({ crossing, onConnect, isConnected, isPremi
                     </div>
                     
                     <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                             <h3 className="font-heading text-lg font-normal text-white group-hover:text-rose-400 transition-colors">
                                 {crossing.other_user_name}
                             </h3>
+                            {crossing.other_is_founder && (
+                                <FoundingMemberBadge number={crossing.other_founder_number} size="xs" />
+                            )}
                             {otherIsPremium && (
                                 <span className="px-2 py-0.5 text-xs font-medium bg-rose-500/20 text-rose-400 rounded-full">
                                     Premium

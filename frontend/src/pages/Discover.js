@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getInitials } from '../lib/utils';
+import FoundingMemberBadge from '../components/FoundingMemberBadge';
 
 const REASON_ICON = {
     Lives: MapPin,
@@ -26,6 +27,7 @@ const SWIPE_THRESHOLD = 110; // px before a swipe commits
 
 export default function Discover() {
     const [candidates, setCandidates] = useState([]);
+    const [teasers, setTeasers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [index, setIndex] = useState(0);
     const [history, setHistory] = useState([]); // for Undo
@@ -42,6 +44,14 @@ export default function Discover() {
             toast.error('Could not load suggestions');
         } finally {
             setLoading(false);
+        }
+        // Fetch teasers in parallel — they only render when the stack is empty.
+        try {
+            const t = await discoverApi.getTeasers();
+            setTeasers(t.data || []);
+        } catch (err) {
+            // Teasers are non-critical — silently no-op.
+            console.debug('teasers unavailable', err?.response?.status);
         }
     }, []);
 
@@ -105,7 +115,7 @@ export default function Discover() {
 
     return (
         <div
-            className="max-w-md mx-auto px-4 py-8 flex flex-col"
+            className="max-w-md mx-auto px-4 py-8 flex flex-col pt-[calc(env(safe-area-inset-top,0px)+2rem)]"
             style={{ minHeight: 'calc(100vh - 80px)' }}
             data-testid="discover-page"
         >
@@ -122,7 +132,7 @@ export default function Discover() {
             </header>
 
             {done || candidates.length === 0 ? (
-                <EmptyState onReload={load} />
+                <EmptyState onReload={load} teasers={teasers} />
             ) : (
                 <>
                     <div
@@ -317,10 +327,13 @@ function SwipeCard({ candidate, isTop, stackPos, sending, onDecide }) {
 
                 {/* Bottom gradient + info */}
                 <div className="absolute inset-x-0 bottom-0 p-5 pb-6 bg-gradient-to-t from-black/95 via-black/70 to-transparent z-20">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="text-3xl font-bold text-white">{candidate.name}</h3>
                         {candidate.is_premium ? (
                             <Crown className="w-5 h-5 text-amber-400" />
+                        ) : null}
+                        {candidate.is_founder ? (
+                            <FoundingMemberBadge number={candidate.founder_number} size="xs" />
                         ) : null}
                     </div>
                     {candidate.city ? (
@@ -419,7 +432,8 @@ function ActionBar({ canUndo, onUndo, onPass, onHi, sending, candidate }) {
     );
 }
 
-function EmptyState({ onReload }) {
+function EmptyState({ onReload, teasers = [] }) {
+    const hasTeasers = teasers && teasers.length > 0;
     return (
         <div
             className="flex-1 flex flex-col items-center justify-center text-center"
@@ -428,10 +442,47 @@ function EmptyState({ onReload }) {
             <div className="w-20 h-20 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-4">
                 <Sparkles className="w-9 h-9 text-amber-400" />
             </div>
-            <h2 className="text-2xl text-white font-medium mb-2">All caught up!</h2>
+            <h2 className="text-2xl text-white font-medium mb-2">
+                {hasTeasers ? "You've been close" : 'All caught up!'}
+            </h2>
             <p className="text-sm text-white/50 max-w-sm mx-auto mb-6">
-                You've seen everyone we surfaced. Add more locations or RSVP to a Gathering and we'll find fresh people you haven't met yet.
+                {hasTeasers
+                    ? "We spotted a few possible crossings but not enough to swipe on yet. Add more places you've been and they'll surface here."
+                    : "You've seen everyone we surfaced. Add more locations or RSVP to a Gathering and we'll find fresh people you haven't met yet."}
             </p>
+
+            {hasTeasers ? (
+                <div
+                    className="w-full max-w-sm mx-auto mb-6 space-y-2"
+                    data-testid="discover-teasers"
+                >
+                    {teasers.slice(0, 4).map((t) => (
+                        <div
+                            key={t.id}
+                            className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm text-left"
+                            data-testid={`discover-teaser-${t.id}`}
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-500/40 to-amber-500/40 flex items-center justify-center flex-shrink-0">
+                                <Sparkles className="w-4 h-4 text-white/70" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm text-white font-medium truncate">
+                                    {t.hint}
+                                </p>
+                                <p className="text-xs text-white/50 truncate">
+                                    {t.event_or_place ? `${t.event_or_place}${t.city ? ` · ${t.city}` : ''}` : t.city}
+                                </p>
+                            </div>
+                            {t.other_count > 1 ? (
+                                <span className="text-xs text-amber-300 font-medium">
+                                    +{t.other_count}
+                                </span>
+                            ) : null}
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+
             <div className="flex gap-3">
                 <Link to="/locations">
                     <Button variant="outline" data-testid="discover-cta-locations">

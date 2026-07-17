@@ -142,6 +142,7 @@ export const crossingsApi = {
 // Discover API — People You Might Know
 export const discoverApi = {
     getCandidates: () => api.get('/discover'),
+    getTeasers: () => api.get('/discover/teasers'),
 };
 
 // Search API — quick user search for navbar
