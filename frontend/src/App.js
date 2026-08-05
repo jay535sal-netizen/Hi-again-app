@@ -26,6 +26,7 @@ import Terms from "./pages/Terms";
 import DeleteAccount from "./pages/DeleteAccount";
 import FounderInvite from "./pages/FounderInvite";
 import Discover from "./pages/Discover";
+import VoiceAssistant from "./components/VoiceAssistant";
 import { Loader2 } from "lucide-react";
 
 // Referral link redirect component
@@ -346,6 +347,7 @@ function App() {
             <BrowserRouter>
                 <AuthProvider>
                     <AppRoutes />
+                    <VoiceAssistant />
                     <Toaster 
                         position="top-right" 
                         toastOptions={toastOptions}

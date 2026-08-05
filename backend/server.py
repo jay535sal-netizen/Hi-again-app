@@ -6036,6 +6036,235 @@ async def export_code(
     }
     return StreamingResponse(iter_zip(), media_type="application/zip", headers=headers)
 
+
+# ============================================================
+# Voice Assistant — natural-language command interpreter.
+# STT happens client-side (Web Speech API). We take the transcript,
+# classify with Claude Sonnet 5, and return a structured intent
+# the frontend can act on (navigate/query/action) plus a spoken reply.
+# ============================================================
+
+class VoiceIntentRequest(BaseModel):
+    transcript: str
+    context_page: Optional[str] = None
+
+
+class VoiceIntentResponse(BaseModel):
+    intent: str
+    target: Optional[str] = None
+    params: Optional[dict] = None
+    reply: str
+    data: Optional[dict] = None
+
+
+VOICE_SYSTEM_PROMPT = """You are the voice assistant for "Hi Again", a missed-connections app.
+Return ONE JSON object (no markdown, no extra text) with:
+{"intent": "navigate|query|action|smalltalk|unknown", "target": string|null, "params": object|null, "reply": string}
+
+`target` for navigate must be one of these exact route paths:
+/dashboard, /feed, /discover, /crossings, /gatherings, /profile, /settings, /premium,
+/referrals, /messages, /who-viewed-me, /founder-invite, /locations, /notifications, /moments, /
+
+`target` for query must be one of:
+recent_crossings, todays_highlights, new_messages, who_viewed_me, my_reels, my_posts_today,
+founder_count, my_founder_number, last_crossing, recent_likes, new_notifications,
+upcoming_gatherings, my_stats
+
+`target` for action must be one of:
+create_post, toggle_ghost_mode, logout, refresh_feed, like_current_post, skip_current,
+undo_last, share_profile, delete_current, save_current, rsvp_yes, rsvp_no, ghost_on, ghost_off
+
+`reply` must be 1-2 short sentences, warm, first-name-basis. Under 25 words. No markdown."""
+
+
+@api_router.post("/voice/intent", response_model=VoiceIntentResponse)
+async def voice_intent(
+    payload: VoiceIntentRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="Voice assistant not configured")
+
+    transcript = (payload.transcript or "").strip()
+    if not transcript:
+        raise HTTPException(status_code=400, detail="Empty transcript")
+    if len(transcript) > 500:
+        transcript = transcript[:500]
+
+    user_first = (current_user.get("name") or "there").split()[0] or "there"
+
+    # Fast-path regex for common commands — skip LLM for zero-latency response.
+    import re as _re
+    fast_map = [
+        (r"\b(my profile|show.*profile|take me to profile|open profile|go to profile)\b", ("navigate", "/profile", f"Opening your profile, {user_first}.")),
+        (r"\b(the feed|open feed|show.*feed|go to feed|home feed)\b", ("navigate", "/feed", "Here's your feed.")),
+        (r"\b(discover|swipe|find people|show.*people)\b", ("navigate", "/discover", "Let's discover.")),
+        (r"\b(crossings?|missed crossings?|missed encounters?|missed connections?)\b", ("navigate", "/crossings", "Pulling up your crossings.")),
+        (r"\b(gatherings?|events)\b", ("navigate", "/gatherings", "Here are gatherings near you.")),
+        (r"\b(settings|preferences)\b", ("navigate", "/settings", "Opening settings.")),
+        (r"\b(premium|upgrade|pricing)\b", ("navigate", "/premium", "Here's Premium.")),
+        (r"\b(referrals?|invite friends?)\b", ("navigate", "/referrals", "Here's your invite hub.")),
+        (r"\b(messages?|chats?|inbox|dms?)\b", ("navigate", "/messages", "Opening messages.")),
+        (r"\b(who viewed|viewers|profile views?)\b", ("navigate", "/who-viewed-me", "Let's see who checked you out.")),
+        (r"\b(dashboard|main screen|home screen)\b", ("navigate", "/dashboard", "Back to home.")),
+        (r"\b(founders?|founder invite|founder code|founding member)\b", ("navigate", "/founder-invite", "Here's the founders hub.")),
+        (r"\b(locations?|places|my history)\b", ("navigate", "/locations", "Your locations.")),
+        (r"\b(notifications?|alerts?)\b", ("navigate", "/notifications", "Opening notifications.")),
+        (r"\b(moments?)\b", ("navigate", "/moments", "Here are moments.")),
+        (r"\b(log ?out|sign out)\b", ("action", "logout", "Logging you out.")),
+        (r"\b(refresh|reload)\b", ("action", "refresh_feed", "Refreshing.")),
+        (r"\b(ghost mode on|go ghost|hide me|make me invisible)\b", ("action", "ghost_on", "Ghost mode on — you're invisible.")),
+        (r"\b(ghost mode off|un-?ghost|show me again|visible again)\b", ("action", "ghost_off", "You're visible again.")),
+        (r"\b(create.*post|new post|make a post|post something)\b", ("action", "create_post", "Opening the post composer.")),
+        (r"\b(reels?|videos?)\b", ("query", "my_reels", "Here are the latest reels.")),
+        (r"\btoday.?s highlights?\b|\bhighlights?.*today\b|\bwhat.*happened today\b|\bwhat.?s new\b", ("query", "todays_highlights", "Here's what happened today.")),
+        (r"\b(posts? from today|today.?s posts?|my posts today)\b", ("query", "my_posts_today", "Here are today's posts.")),
+        (r"\b(new messages?|any messages|check messages)\b", ("query", "new_messages", "Checking your inbox.")),
+        (r"\b(founder number|what.?s my founder|am i a founder)\b", ("query", "my_founder_number", "Looking that up.")),
+        (r"\b(recent crossings?|any crossings?|new crossings?|latest crossings?)\b", ("query", "recent_crossings", "Pulling recent crossings.")),
+        (r"\b(last crossing|most recent crossing)\b", ("query", "last_crossing", "Here it is.")),
+        (r"\b(how many crossings|my crossing count|my stats)\b", ("query", "my_stats", "Here are your stats.")),
+        (r"\b(upcoming gatherings?|next event)\b", ("query", "upcoming_gatherings", "Upcoming gatherings.")),
+        (r"\b(recent likes?|who liked me)\b", ("query", "recent_likes", "Recent likes.")),
+        (r"\b(unread|new notification)\b", ("query", "new_notifications", "Unread notifications.")),
+        (r"\b(founder count|how many founders?)\b", ("query", "founder_count", "Founders update.")),
+        (r"^\s*(hi|hello|hey|yo|sup|hey there)\s*[\.\!\?]?\s*$", ("smalltalk", None, f"Hey {user_first} — what can I do?")),
+        (r"\b(thanks|thank you|thx|thank u)\b", ("smalltalk", None, "Anytime.")),
+    ]
+    lower = transcript.lower()
+    for pat, (intent, target, reply) in fast_map:
+        if _re.search(pat, lower):
+            return VoiceIntentResponse(intent=intent, target=target, params=None, reply=reply)
+
+    # LLM fallback for the long tail.
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"voice-{current_user['id']}",
+            system_message=VOICE_SYSTEM_PROMPT,
+        ).with_model("anthropic", "claude-sonnet-5")
+
+        context_line = f"\nCurrent page: {payload.context_page}" if payload.context_page else ""
+        prompt = f'User first name: {user_first}{context_line}\nTranscript: "{transcript}"\nReturn ONLY the JSON object.'
+        raw = await chat.send_message(UserMessage(text=prompt))
+
+        text = (raw or "").strip()
+        if "```" in text:
+            text = _re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=_re.MULTILINE)
+        m = _re.search(r"\{.*\}", text, _re.DOTALL)
+        if not m:
+            raise ValueError("no json in response")
+        parsed = json.loads(m.group(0))
+
+        return VoiceIntentResponse(
+            intent=str(parsed.get("intent") or "unknown"),
+            target=parsed.get("target"),
+            params=parsed.get("params"),
+            reply=(parsed.get("reply") or "Got it.")[:400],
+        )
+    except Exception as e:
+        logger.warning(f"Voice intent LLM failed: {e}")
+        return VoiceIntentResponse(
+            intent="unknown",
+            target=None,
+            params=None,
+            reply="Sorry — I missed that. Try 'go to my profile' or 'show today's highlights'.",
+        )
+
+
+@api_router.get("/voice/query/{name}")
+async def voice_query_data(name: str, current_user: dict = Depends(get_current_user)):
+    """Backing data + spoken summary for voice `query` intents."""
+    me_id = current_user["id"]
+    now = datetime.now(timezone.utc)
+    today_iso = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    if name == "recent_crossings":
+        rows = await db.crossings.find(
+            {"user_id": me_id, "removed": {"$ne": True}},
+            {"_id": 0, "other_user_name": 1, "city": 1, "event_or_place": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(3).to_list(3)
+        if not rows:
+            return {"count": 0, "items": [], "summary": "No new crossings yet — keep exploring."}
+        parts = [f"{r.get('other_user_name','someone')} at {r.get('event_or_place') or r.get('city') or 'somewhere'}" for r in rows]
+        return {"count": len(rows), "items": rows, "summary": f"Your latest crossings: {'; '.join(parts)}."}
+
+    if name == "todays_highlights":
+        c_count = await db.crossings.count_documents({"user_id": me_id, "created_at": {"$gte": today_iso}, "removed": {"$ne": True}})
+        m_count = await db.messages.count_documents({"recipient_id": me_id, "created_at": {"$gte": today_iso}, "read": {"$ne": True}})
+        v_count = await db.profile_views.count_documents({"viewed_user_id": me_id, "created_at": {"$gte": today_iso}})
+        summary = f"Today: {c_count} new crossing{'s' if c_count != 1 else ''}, {m_count} unread message{'s' if m_count != 1 else ''}, {v_count} profile view{'s' if v_count != 1 else ''}."
+        return {"crossings": c_count, "messages": m_count, "views": v_count, "summary": summary}
+
+    if name == "new_messages":
+        count = await db.messages.count_documents({"recipient_id": me_id, "read": {"$ne": True}})
+        return {"count": count, "summary": f"You have {count} unread message{'s' if count != 1 else ''}."}
+
+    if name == "who_viewed_me":
+        count = await db.profile_views.count_documents({"viewed_user_id": me_id, "created_at": {"$gte": today_iso}})
+        return {"count": count, "summary": f"{count} people viewed your profile today."}
+
+    if name == "my_reels":
+        rows = await db.posts.find(
+            {"media_type": "video", "removed": {"$ne": True}},
+            {"_id": 0, "id": 1, "user_name": 1, "caption": 1, "media_url": 1},
+        ).sort("created_at", -1).limit(5).to_list(5)
+        return {"count": len(rows), "items": rows, "summary": f"Found {len(rows)} recent reel{'s' if len(rows) != 1 else ''}."}
+
+    if name == "my_posts_today":
+        rows = await db.posts.find(
+            {"user_id": me_id, "created_at": {"$gte": today_iso}, "removed": {"$ne": True}},
+            {"_id": 0, "id": 1, "caption": 1, "media_url": 1},
+        ).to_list(20)
+        return {"count": len(rows), "items": rows, "summary": f"You posted {len(rows)} time{'s' if len(rows) != 1 else ''} today."}
+
+    if name == "my_founder_number":
+        user = await db.users.find_one({"id": me_id}, {"_id": 0, "is_founder": 1, "founder_number": 1})
+        if user and user.get("is_founder"):
+            return {"is_founder": True, "founder_number": user.get("founder_number"), "summary": f"You are founder number {user.get('founder_number')} of 60."}
+        return {"is_founder": False, "founder_number": None, "summary": "You're not a founder yet — grab an invite code to claim your spot."}
+
+    if name == "founder_count":
+        claimed = await db.users.count_documents({"is_founder": True})
+        return {"claimed": claimed, "remaining": max(0, 60 - claimed), "summary": f"{claimed} of 60 founder spots claimed."}
+
+    if name == "recent_likes":
+        rows = await db.notifications.find(
+            {"user_id": me_id, "type": "like"},
+            {"_id": 0, "actor_name": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(5).to_list(5)
+        return {"count": len(rows), "items": rows, "summary": f"{len(rows)} recent like{'s' if len(rows) != 1 else ''}."}
+
+    if name == "new_notifications":
+        count = await db.notifications.count_documents({"user_id": me_id, "read": {"$ne": True}})
+        return {"count": count, "summary": f"{count} unread notification{'s' if count != 1 else ''}."}
+
+    if name == "upcoming_gatherings":
+        rows = await db.gatherings.find(
+            {"starts_at": {"$gte": now.isoformat()}},
+            {"_id": 0, "id": 1, "title": 1, "starts_at": 1, "city": 1},
+        ).sort("starts_at", 1).limit(3).to_list(3)
+        return {"count": len(rows), "items": rows, "summary": f"{len(rows)} upcoming gathering{'s' if len(rows) != 1 else ''}."}
+
+    if name == "last_crossing":
+        row = await db.crossings.find_one(
+            {"user_id": me_id, "removed": {"$ne": True}},
+            {"_id": 0, "other_user_name": 1, "city": 1, "event_or_place": 1, "created_at": 1},
+            sort=[("created_at", -1)],
+        )
+        if not row:
+            return {"summary": "You don't have any crossings yet."}
+        return {"item": row, "summary": f"Last crossing: {row.get('other_user_name','someone')} at {row.get('event_or_place') or row.get('city') or 'a place'}."}
+
+    if name == "my_stats":
+        c = await db.crossings.count_documents({"user_id": me_id, "removed": {"$ne": True}})
+        p = await db.posts.count_documents({"user_id": me_id, "removed": {"$ne": True}})
+        return {"crossings": c, "posts": p, "summary": f"You have {c} crossings and {p} posts total."}
+
+    raise HTTPException(status_code=404, detail=f"Unknown query: {name}")
+
+
 # Include the router in the main app (must be after all route definitions)
 app.include_router(api_router)
 
