@@ -25,6 +25,7 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import DeleteAccount from "./pages/DeleteAccount";
 import FounderInvite from "./pages/FounderInvite";
+import AdminFounders from "./pages/AdminFounders";
 import Discover from "./pages/Discover";
 import VoiceAssistant from "./components/VoiceAssistant";
 import { Loader2 } from "lucide-react";
@@ -290,6 +291,15 @@ function AppRoutes() {
                         <Navbar />
                         <FounderInvite />
                     </>
+                }
+            />
+            <Route
+                path="/admin/founders"
+                element={
+                    <ProtectedRoute>
+                        <Navbar />
+                        <AdminFounders />
+                    </ProtectedRoute>
                 }
             />
 

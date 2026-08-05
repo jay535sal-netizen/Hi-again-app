@@ -46,7 +46,9 @@ export default function VoiceAssistant() {
     const [lastTranscript, setLastTranscript] = useState('');
     const [lastReply, setLastReply] = useState('');
     const [showHelp, setShowHelp] = useState(false);
+    const [showPermPrimer, setShowPermPrimer] = useState(false);
     const recognitionRef = useRef(null);
+    const greetedRef = useRef(false);
     const stateRef = useRef('idle');
     stateRef.current = state;
 
@@ -168,7 +170,7 @@ export default function VoiceAssistant() {
         [handleIntent, location.pathname]
     );
 
-    const startListening = useCallback(() => {
+    const beginRecognition = useCallback(() => {
         if (unsupported) {
             toast.error('Voice input is not supported in this browser');
             return;
@@ -192,14 +194,14 @@ export default function VoiceAssistant() {
         rec.onerror = (event) => {
             console.warn('speech recognition error', event.error);
             if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-                toast.error('Microphone permission denied');
+                toast.error('Microphone permission denied — enable it in your device settings');
+                localStorage.removeItem('hiagain.voice_primer_accepted');
             } else if (event.error === 'no-speech') {
                 setLastReply("I didn't hear anything.");
             }
             setState('idle');
         };
         rec.onend = () => {
-            // If no result fired, drop back to idle
             if (stateRef.current === 'listening') setState('idle');
         };
 
@@ -211,6 +213,28 @@ export default function VoiceAssistant() {
             setState('idle');
         }
     }, [sendTranscript, unsupported]);
+
+    const startListening = useCallback(() => {
+        if (unsupported) {
+            toast.error('Voice input is not supported in this browser');
+            return;
+        }
+        // First-time users see a friendly primer explaining WHY we need the mic
+        // before the raw browser/OS permission dialog fires.
+        const seen = localStorage.getItem('hiagain.voice_primer_accepted');
+        if (!seen) {
+            setShowPermPrimer(true);
+            return;
+        }
+        beginRecognition();
+    }, [beginRecognition, unsupported]);
+
+    const acceptPermPrimer = () => {
+        localStorage.setItem('hiagain.voice_primer_accepted', '1');
+        setShowPermPrimer(false);
+        // Give the modal a beat to unmount before requesting mic
+        setTimeout(() => beginRecognition(), 250);
+    };
 
     const stopListening = useCallback(() => {
         try {
@@ -239,6 +263,47 @@ export default function VoiceAssistant() {
             }
         };
     }, []);
+
+    // Morning greeting — speaks a one-line summary of overnight activity
+    // the first time the user opens the app on a new calendar day.
+    // Only triggers if the user has already accepted the permission primer
+    // AND is on a real authed page (not landing/auth screens).
+    useEffect(() => {
+        if (!user || greetedRef.current) return;
+        const primerAccepted = localStorage.getItem('hiagain.voice_primer_accepted');
+        if (!primerAccepted) return;
+        const today = new Date().toISOString().slice(0, 10);
+        const lastGreeting = localStorage.getItem('hiagain.last_greeting_date');
+        if (lastGreeting === today) return;
+        // Only greet between 5am and 11am local — avoid startling users mid-day
+        const hour = new Date().getHours();
+        if (hour < 5 || hour > 11) return;
+
+        greetedRef.current = true;
+        localStorage.setItem('hiagain.last_greeting_date', today);
+
+        (async () => {
+            try {
+                const res = await api.get('/voice/query/todays_highlights');
+                const first = (user.name || 'there').split(' ')[0];
+                const summary = res.data?.summary || '';
+                // Only speak if there's something worth saying
+                const anything = ['crossing', 'message', 'view'].some((k) =>
+                    summary.toLowerCase().includes(k)
+                );
+                const line = anything
+                    ? `Morning, ${first}. ${summary}`
+                    : `Morning, ${first}. Quiet night — good day to start something new.`;
+                setLastReply(line);
+                setState('speaking');
+                speak(line);
+                setTimeout(() => setState('idle'), Math.min(5000, 1500 + line.length * 40));
+            } catch (err) {
+                // Non-critical — silently skip
+                console.debug('morning greeting failed', err?.response?.status);
+            }
+        })();
+    }, [user]);
 
     // Hide entirely on the login/register/landing routes and if user not logged in
     const hiddenRoutes = ['/', '/login', '/register', '/verify-email', '/reset-password'];
@@ -295,6 +360,42 @@ export default function VoiceAssistant() {
                     )}
                 </button>
             </div>
+
+            {showPermPrimer && (
+                <div
+                    className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+                    data-testid="voice-permission-primer"
+                >
+                    <div className="max-w-md w-full bg-slate-900 border border-white/10 rounded-2xl p-5">
+                        <div className="w-14 h-14 mx-auto rounded-full bg-gradient-to-br from-rose-500 to-amber-500 flex items-center justify-center mb-4">
+                            <Mic className="w-7 h-7 text-white" />
+                        </div>
+                        <h3 className="text-lg text-white font-medium text-center mb-2">
+                            Hey — mind if I listen?
+                        </h3>
+                        <p className="text-sm text-white/70 text-center mb-5">
+                            Hi Again's voice assistant lets you navigate hands-free. Your device will ask for microphone
+                            permission next. We only send what you say to the assistant — nothing is recorded or stored.
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setShowPermPrimer(false)}
+                                className="flex-1 py-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm"
+                                data-testid="voice-primer-cancel"
+                            >
+                                Not now
+                            </button>
+                            <button
+                                onClick={acceptPermPrimer}
+                                className="flex-1 py-2.5 rounded-lg bg-gradient-to-r from-rose-500 to-amber-500 text-white text-sm font-medium"
+                                data-testid="voice-primer-accept"
+                            >
+                                Enable mic
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {showHelp && (
                 <div
