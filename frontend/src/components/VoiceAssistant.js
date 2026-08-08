@@ -80,8 +80,23 @@ export default function VoiceAssistant() {
                         return;
                     case 'create_post':
                         navigate('/feed');
-                        setTimeout(() => window.dispatchEvent(new CustomEvent('voice:create_post')), 400);
+                        setTimeout(
+                            () => window.dispatchEvent(new CustomEvent('voice:create_post')),
+                            400,
+                        );
                         return;
+                    case 'voice_post': {
+                        const caption = result.params?.caption || '';
+                        navigate('/feed');
+                        setTimeout(
+                            () =>
+                                window.dispatchEvent(
+                                    new CustomEvent('voice:create_post', { detail: { caption } }),
+                                ),
+                            400,
+                        );
+                        return;
+                    }
                     case 'ghost_on':
                     case 'ghost_off': {
                         const ghost = result.target === 'ghost_on';

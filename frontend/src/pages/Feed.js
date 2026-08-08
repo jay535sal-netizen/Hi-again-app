@@ -34,7 +34,19 @@ export default function Feed() {
     const [cityFilter, setCityFilter] = useState(null); // null = all cities
     const [nearMe, setNearMe] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [voicePrefill, setVoicePrefill] = useState('');
     const [selectedPost, setSelectedPost] = useState(null);
+
+    // Voice assistant → open composer (optionally pre-filled with a caption)
+    useEffect(() => {
+        const handler = (e) => {
+            const caption = e?.detail?.caption || '';
+            setVoicePrefill(caption);
+            setShowCreateModal(true);
+        };
+        window.addEventListener('voice:create_post', handler);
+        return () => window.removeEventListener('voice:create_post', handler);
+    }, []);
     
     const fetchPosts = useCallback(async () => {
         setLoading(true);
@@ -236,7 +248,8 @@ export default function Feed() {
             {/* Create Post Modal */}
             {showCreateModal && (
                 <CreatePostModal 
-                    onClose={() => setShowCreateModal(false)}
+                    initialCaption={voicePrefill}
+                    onClose={() => { setShowCreateModal(false); setVoicePrefill(''); }}
                     onPostCreated={handlePostCreated}
                 />
             )}
@@ -477,10 +490,10 @@ function PostCard({ post, currentUserId, onLike, onDelete, onReport, onBlock, on
 }
 
 // Create Post Modal
-function CreatePostModal({ onClose, onPostCreated }) {
+function CreatePostModal({ onClose, onPostCreated, initialCaption = '' }) {
     const [file, setFile] = useState(null);
     const [preview, setPreview] = useState(null);
-    const [caption, setCaption] = useState('');
+    const [caption, setCaption] = useState(initialCaption);
     const [location, setLocation] = useState('');
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef(null);

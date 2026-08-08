@@ -5960,6 +5960,84 @@ async def cleanup_broken_media(current_user: dict = Depends(get_current_user)):
     }
 
 
+@api_router.post("/admin/push/evening-wrap")
+async def send_evening_wrap(current_user: dict = Depends(get_current_user)):
+    """Sends the daily "evening wrap" push notification to every user with a
+    registered device token. Trigger via cron-job.org or a scheduler at ~9pm
+    your primary user timezone. Idempotent per-day (UTC): each user gets at
+    most one wrap push per calendar day, and only if they had activity."""
+    if current_user.get("email") not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    now = datetime.now(timezone.utc)
+    today_key = now.strftime("%Y-%m-%d")
+    today_iso = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    sent = 0
+    skipped_already = 0
+    skipped_quiet = 0
+    errored = 0
+
+    token_user_ids = await db.push_tokens.distinct("user_id")
+    for uid in token_user_ids:
+        already = await db.push_events.find_one({
+            "user_id": uid, "kind": "evening_wrap", "day": today_key,
+        })
+        if already:
+            skipped_already += 1
+            continue
+
+        user = await db.users.find_one({"id": uid}, {"_id": 0, "name": 1, "notification_prefs": 1})
+        if not user:
+            continue
+        prefs = user.get("notification_prefs") or {}
+        if prefs.get("evening_wrap") is False:
+            skipped_quiet += 1
+            continue
+
+        first = (user.get("name") or "there").split()[0]
+        c = await db.crossings.count_documents({
+            "user_id": uid, "created_at": {"$gte": today_iso}, "removed": {"$ne": True}
+        })
+        m = await db.messages.count_documents({
+            "recipient_id": uid, "created_at": {"$gte": today_iso}, "read": {"$ne": True}
+        })
+        v = await db.profile_views.count_documents({
+            "viewed_user_id": uid, "created_at": {"$gte": today_iso}
+        })
+        if c + m + v == 0:
+            skipped_quiet += 1
+            continue
+
+        parts = []
+        if c: parts.append(f"{c} new crossing{'s' if c != 1 else ''}")
+        if m: parts.append(f"{m} unread message{'s' if m != 1 else ''}")
+        if v: parts.append(f"{v} profile view{'s' if v != 1 else ''}")
+        body = f"{first} — today you had {', '.join(parts)}. Tap to see."
+
+        try:
+            await send_push_to_user(uid, title="Hi Again \U0001f319", body=body, data={"deeplink": "/dashboard"})
+            await db.push_events.insert_one({
+                "user_id": uid,
+                "kind": "evening_wrap",
+                "day": today_key,
+                "sent_at": now.isoformat(),
+                "body": body,
+            })
+            sent += 1
+        except Exception as e:
+            logger.warning(f"evening wrap push failed for {uid}: {e}")
+            errored += 1
+
+    return {
+        "sent": sent,
+        "skipped_already_today": skipped_already,
+        "skipped_quiet_day": skipped_quiet,
+        "errored": errored,
+    }
+
+
+
 
 # ============================================================
 # Admin: Secure Code Export (Plan B for blocked GitHub pushes)
@@ -6072,7 +6150,11 @@ upcoming_gatherings, my_stats
 
 `target` for action must be one of:
 create_post, toggle_ghost_mode, logout, refresh_feed, like_current_post, skip_current,
-undo_last, share_profile, delete_current, save_current, rsvp_yes, rsvp_no, ghost_on, ghost_off
+undo_last, share_profile, delete_current, save_current, rsvp_yes, rsvp_no, ghost_on, ghost_off,
+voice_post
+
+For `voice_post`, extract the caption content and return it in params.caption. Example:
+User says "post about the sunset at Fenway" → {"intent":"action","target":"voice_post","params":{"caption":"the sunset at Fenway"},"reply":"Opening the post composer with your caption."}
 
 `reply` must be 1-2 short sentences, warm, first-name-basis. Under 25 words. No markdown."""
 
@@ -6116,6 +6198,8 @@ async def voice_intent(
         (r"\b(ghost mode on|go ghost|hide me|make me invisible)\b", ("action", "ghost_on", "Ghost mode on — you're invisible.")),
         (r"\b(ghost mode off|un-?ghost|show me again|visible again)\b", ("action", "ghost_off", "You're visible again.")),
         (r"\b(create.*post|new post|make a post|post something)\b", ("action", "create_post", "Opening the post composer.")),
+        # voice_post is intentionally NOT in the fast-path — we want the LLM
+        # to extract the caption from natural phrasing like "post about X".
         (r"\b(reels?|videos?)\b", ("query", "my_reels", "Here are the latest reels.")),
         (r"\btoday.?s highlights?\b|\bhighlights?.*today\b|\bwhat.*happened today\b|\bwhat.?s new\b", ("query", "todays_highlights", "Here's what happened today.")),
         (r"\b(posts? from today|today.?s posts?|my posts today)\b", ("query", "my_posts_today", "Here are today's posts.")),
